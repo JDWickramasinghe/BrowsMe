@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+    >
+    <title>BrowsMe</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div id="app" data-theme="system">
+      <header class="browser-header">
+        <div class="tab-strip" aria-label="Tabs">
+          <div class="brand-mark" aria-label="BrowsMe">
+            <svg class="brand-mark-svg" viewBox="0 0 64 64" aria-hidden="true">
+              <defs>
+                <linearGradient id="bm-grad" x1="6" y1="8" x2="58" y2="56" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stop-color="#5b67e8"></stop>
+                  <stop offset="1" stop-color="#7958ef"></stop>
+                </linearGradient>
+              </defs>
+              <g fill="none" stroke="url(#bm-grad)" stroke-width="6" stroke-linecap="round">
+                <ellipse cx="32" cy="32" rx="23" ry="10.5" transform="rotate(45 32 32)"></ellipse>
+                <ellipse cx="32" cy="32" rx="23" ry="10.5" transform="rotate(-45 32 32)"></ellipse>
+              </g>
+              <circle cx="32" cy="32" r="8" fill="url(#bm-grad)"></circle>
+            </svg>
+          </div>
+          <div id="tabs" class="tabs" role="tablist"></div>
+          <button id="new-tab" class="icon-button tab-add" type="button" aria-label="New tab" title="New tab (Ctrl+T)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+          <div class="titlebar-drag-region" aria-hidden="true"></div>
+          <div class="window-controls">
+            <button class="window-button" data-window-action="minimize" type="button" aria-label="Minimize">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"></path></svg>
+            </button>
+            <button id="maximize-button" class="window-button" data-window-action="maximize" type="button" aria-label="Maximize">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1"></rect></svg>
+            </button>
+            <button class="window-button close-window" data-window-action="close" type="button" aria-label="Close">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <nav class="navigation-bar" aria-label="Browser controls">
+          <div class="nav-group">
+            <button id="back" class="icon-button" type="button" aria-label="Back" title="Back (Alt+Left)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+            </button>
+            <button id="forward" class="icon-button" type="button" aria-label="Forward" title="Forward (Alt+Right)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+            </button>
+            <button id="reload" class="icon-button" type="button" aria-label="Reload" title="Reload (Ctrl+R)">
+              <svg class="reload-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 5"></path><path d="M19 4v4h-4"></path></svg>
+              <svg class="stop-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg>
+            </button>
+            <button id="home" class="icon-button" type="button" aria-label="Home" title="New tab">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 11 8-7 8 7"></path><path d="M6.5 10v9h11v-9M10 19v-5h4v5"></path></svg>
+            </button>
+          </div>
+
+          <div id="omnibox" class="omnibox">
+            <button id="security-indicator" class="security-indicator" type="button" aria-label="Connection information">
+              <svg class="secure-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2"></path><rect x="5" y="10" width="14" height="10" rx="3"></rect></svg>
+              <svg class="insecure-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.6 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"></path></svg>
+              <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="m15 15 5 5"></path></svg>
+            </button>
+            <input
+              id="address"
+              type="text"
+              inputmode="url"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Address and search"
+              placeholder="Search Google or type a URL"
+            >
+            <button id="zoom-reset" class="omnibox-zoom" type="button" hidden aria-label="Reset zoom to 100%" title="Reset zoom">100%</button>
+            <button id="bookmark" class="icon-button omnibox-action" type="button" aria-label="Bookmark this tab" title="Bookmark this tab">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"></path></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-actions">
+            <button id="ai-toggle" class="toolbar-button ai-toggle is-active" type="button" aria-label="Toggle AI terminal" title="AI terminal (Ctrl+Shift+A)">
+              <span class="spark">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.4 4.2L18 9l-4.6 1.8L12 15l-1.4-4.2L6 9l4.6-1.8L12 3Z"></path><path d="m18.5 15 .7 2.1 2.3.9-2.3.9-.7 2.1-.7-2.1-2.3-.9 2.3-.9.7-2.1Z"></path></svg>
+              </span>
+              <span>AI</span>
+            </button>
+            <button id="toolbar-stop-agent" class="toolbar-button toolbar-stop" type="button" hidden aria-label="Stop AI control">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>
+              <span>Stop AI</span>
+            </button>
+            <button id="downloads-button" class="icon-button badge-host" type="button" aria-label="Downloads" title="Downloads (Ctrl+J)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"></path></svg>
+              <span id="download-badge" class="toolbar-badge" hidden></span>
+            </button>
+            <button id="theme-toggle" class="icon-button theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle light / dark">
+              <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+              <svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
+            </button>
+            <button id="menu-button" class="icon-button" type="button" aria-label="Browser menu" title="Menu">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"></circle></svg>
+            </button>
+            <button id="settings-button" class="icon-button" type="button" aria-label="Settings" title="Settings">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg>
+            </button>
+          </div>
+        </nav>
+        <div id="bookmarks-bar" class="bookmarks-bar" aria-label="Bookmarks bar"></div>
+        <div id="load-progress" class="load-progress"></div>
+      </header>
+
+      <main id="workspace" class="workspace">
+        <section id="page-viewport" class="page-viewport" aria-label="Web page">
+          <div class="page-placeholder">
+            <div class="placeholder-logo"><span></span></div>
+            <p>Loading page…</p>
+          </div>
+          <div id="find-bar" class="find-bar" hidden role="search" aria-label="Find in page">
+            <svg class="find-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="m15 15 5 5"></path></svg>
+            <input id="find-input" type="text" autocomplete="off" spellcheck="false" placeholder="Find in page" aria-label="Find in page">
+            <span id="find-count" class="find-count">0/0</span>
+            <span class="find-divider" aria-hidden="true"></span>
+            <button id="find-prev" class="find-nav" type="button" aria-label="Previous match" title="Previous match (Shift+Enter)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"></path></svg>
+            </button>
+            <button id="find-next" class="find-nav" type="button" aria-label="Next match" title="Next match (Enter)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+            </button>
+            <button id="find-close" class="find-nav" type="button" aria-label="Close find bar" title="Close (Esc)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+            </button>
+          </div>
+        </section>
+
+        <div id="panel-splitter" class="panel-splitter" role="separator" aria-label="Resize AI terminal" aria-orientation="vertical" tabindex="0"></div>
+
+        <aside id="ai-panel" class="ai-panel" aria-label="BrowsMe AI terminal">
+          <div class="ai-header">
+            <div class="ai-heading">
+              <div class="ai-avatar">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.4 4.2L18 9l-4.6 1.8L12 15l-1.4-4.2L6 9l4.6-1.8L12 3Z"></path><path d="m18.5 15 .7 2.1 2.3.9-2.3.9-.7 2.1-.7-2.1-2.3-.9 2.3-.9.7-2.1Z"></path></svg>
+              </div>
+              <div>
+                <h1>BrowsMe</h1>
+                <div class="model-line">
+                  <span id="ai-status-dot" class="status-dot"></span>
+                  <span id="connection-label">Needs API key</span>
+                  <span aria-hidden="true">·</span>
+                  <span id="model-label">DeepSeek</span>
+                  <span aria-hidden="true">·</span>
+                  <span id="approval-mode-chip" class="approval-mode-chip">Ask</span>
+                </div>
+              </div>
+            </div>
+            <div class="ai-header-actions">
+              <button id="clear-agent" class="mini-button" type="button" aria-label="Delete conversation history" title="Delete conversation history">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M8 10v7M12 10v7M16 10v7M6 7l1 14h10l1-14"></path></svg>
+              </button>
+              <button id="collapse-ai" class="mini-button" type="button" aria-label="Close AI terminal" title="Close">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+              </button>
+            </div>
+          </div>
+
+          <div id="control-banner" class="control-banner" hidden>
+            <div>
+              <span class="control-pulse"></span>
+              <span id="control-banner-label">AI controlling this session</span>
+            </div>
+            <button id="stop-agent-top" type="button">Stop</button>
+          </div>
+
+          <div id="terminal-log" class="terminal-log" role="log" aria-live="polite">
+            <section class="welcome-card">
+              <div class="welcome-orb">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2Z"></path><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15Z"></path></svg>
+              </div>
+              <h2>I’m BrowsMe, created by J.D. Wickramasinghe</h2>
+              <p>I’m powered by DeepSeek and aware of my identity, browser tools, current scope, and persistent memory. Tell me what to do in this browser.</p>
+              <div class="privacy-note">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2"></path><rect x="5" y="10" width="14" height="10" rx="3"></rect></svg>
+                <span>Only browser content needed for your request is sent to DeepSeek.</span>
+              </div>
+            </section>
+          </div>
+
+          <div id="suggestions" class="suggestions">
+            <button type="button" data-prompt="/whoami">Who are you?</button>
+            <button type="button" data-prompt="Summarize the current page in five bullets.">Summarize this page</button>
+            <button type="button" data-prompt="Find the main pricing information on this page.">Find pricing</button>
+            <button type="button" data-prompt="List all open tabs and tell me what each one is about.">Review my tabs</button>
+          </div>
+
+          <div class="terminal-composer">
+            <div class="composer-topline">
+              <span class="terminal-prompt">browser@browsme:~&gt; <span class="browser-only-badge">Browser only</span></span>
+              <label class="scope-control">
+                <span>Context</span>
+                <select id="agent-scope" aria-label="AI browser scope">
+                  <option value="active">Current tab + new tabs</option>
+                  <option value="browser">Whole browser</option>
+                </select>
+              </label>
+            </div>
+            <div class="composer-box">
+              <textarea id="agent-input" rows="2" maxlength="12000" aria-label="Task for BrowsMe" placeholder="Tell BrowsMe what to do…"></textarea>
+              <button id="send-agent" class="send-button" type="button" aria-label="Run command">
+                <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 14-8-4 16-3-6-7-2Z"></path><path d="m12 14 7-10"></path></svg>
+                <svg class="send-stop-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>
+              </button>
+            </div>
+            <div class="composer-hint"><span>Enter to send · Shift+Enter for a new line</span><span id="agent-state-label" role="status" aria-live="polite" aria-atomic="true">Ready</span></div>
+          </div>
+        </aside>
+      </main>
+
+      <div id="toast-region" class="toast-region" aria-live="polite"></div>
+
+      <section id="downloads-popover" class="popover downloads-popover" hidden aria-label="Downloads">
+        <div class="popover-header">
+          <div>
+            <h2>Downloads</h2>
+            <p>Files remain paused until you allow them.</p>
+          </div>
+          <button class="mini-button" data-close-popover type="button" aria-label="Close downloads">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+          </button>
+        </div>
+        <div id="downloads-list" class="downloads-list"></div>
+      </section>
+
+      <section id="reading-popover" class="popover reading-popover" hidden aria-label="Reading list">
+        <div class="popover-header">
+          <div>
+            <h2>Reading list</h2>
+            <p>Pages saved to read later.</p>
+          </div>
+          <button class="mini-button" data-close-popover="reading" type="button" aria-label="Close reading list">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+          </button>
+        </div>
+        <div class="reading-actions">
+          <button id="reading-add" class="primary-mini" type="button">Add current page</button>
+        </div>
+        <div id="reading-list" class="downloads-list"></div>
+      </section>
+
+      <div id="settings-overlay" class="modal-overlay" hidden>
+        <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+          <div class="modal-header">
+            <div>
+              <span class="eyebrow">BROWSME · CREATED BY J.D. WICKRAMASINGHE</span>
+              <h2 id="settings-title">BrowsMe settings</h2>
+              <p>Your API key stays in the trusted desktop process and is never exposed to websites.</p>
+            </div>
+            <button id="close-settings" class="mini-button" type="button" aria-label="Close settings">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+            </button>
+          </div>
+          <div class="settings-body">
+            <div class="setting-section">
+              <div class="section-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7a4 4 0 1 0-7.7 1.5L3 13v4h4v-2h2v-2h2.5l1-1A4 4 0 0 0 15 7Z"></path><circle cx="11" cy="7" r=".5"></circle></svg>
+              </div>
+              <div class="setting-content">
+                <label for="api-key">DeepSeek API key</label>
+                <div class="input-with-action">
+                  <input id="api-key" name="browsme-deepseek-api-key" type="password" autocomplete="new-password" placeholder="sk-…">
+                  <button id="toggle-key" type="button">Show</button>
+                </div>
+                <div class="setting-meta">
+                  <span id="api-key-status">No key configured</span>
+                  <button id="clear-key" class="text-button danger-text" type="button">Remove saved key</button>
+                </div>
+                <label class="check-row">
+                  <input id="remember-key" type="checkbox" checked>
+                  <span>
+                    <strong>Encrypt and remember on this computer</strong>
+                    <small>Uses your operating system’s protected storage.</small>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-grid">
+              <label>
+                <span>Model</span>
+                <input id="model-input" type="text" value="deepseek-v4-flash" spellcheck="false">
+                <small>Fast by default; use deepseek-v4-pro for harder tasks.</small>
+              </label>
+              <label>
+                <span>API address</span>
+                <input id="base-url-input" type="url" value="https://api.deepseek.com" spellcheck="false">
+                <small>OpenAI-compatible <code>/chat/completions</code> endpoint.</small>
+              </label>
+            </div>
+
+            <div class="setting-grid">
+              <label>
+                <span>Appearance</span>
+                <select id="theme-input">
+                  <option value="system">Match system</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+                <small>Controls the BrowsMe interface theme.</small>
+              </label>
+              <label>
+                <span>Search engine</span>
+                <select id="search-engine-input">
+                  <option value="google">Google</option>
+                  <option value="bing">Bing</option>
+                  <option value="duckduckgo">DuckDuckGo</option>
+                  <option value="brave">Brave</option>
+                </select>
+                <small>Used when you type a search in the address bar.</small>
+              </label>
+            </div>
+
+            <label class="reliability-setting">
+              <span>
+                <strong>On startup</strong>
+                <small>Reopen your previous tabs, or begin with a fresh new tab page.</small>
+              </span>
+              <select id="startup-input">
+                <option value="restore">Reopen previous tabs</option>
+                <option value="newtab">Open the new tab page</option>
+              </select>
+            </label>
+
+            <div class="reliability-setting">
+              <span>
+                <strong>Clear browsing data</strong>
+                <small>Remove cookies, cached files, and site storage, plus your BrowsMe history.</small>
+              </span>
+              <button id="clear-data" class="secondary-button" type="button">Clear data</button>
+            </div>
+
+            <label class="reliability-setting">
+              <span>
+                <strong>Task reliability</strong>
+                <small>Controls DeepSeek thinking depth, retries, action budget, and completion verification. Maximum is slower and is not a guarantee.</small>
+              </span>
+              <select id="agent-reliability">
+                <option value="fast">Fast</option>
+                <option value="reliable" selected>Reliable</option>
+                <option value="maximum">Maximum accuracy</option>
+              </select>
+            </label>
+
+            <fieldset class="approval-mode-group">
+              <legend>How should BrowsMe actions be approved?</legend>
+
+              <label class="approval-mode-card">
+                <input type="radio" name="approval-mode" value="ask" checked>
+                <span class="approval-mode-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7 11V6.8a1.5 1.5 0 0 1 3 0V10M10 10V5.5a1.5 1.5 0 0 1 3 0V10M13 10V6.5a1.5 1.5 0 0 1 3 0V11M16 11V8.5a1.5 1.5 0 0 1 3 0v6.2c0 4-2.7 6.3-6.5 6.3h-1.2c-2.2 0-3.6-.8-4.8-2.5L3.4 14a1.6 1.6 0 0 1 2.5-1.9L8 14.5"></path></svg>
+                </span>
+                <span class="approval-mode-copy">
+                  <strong>Ask for approval</strong>
+                  <small>Ask before every AI click, typed value, submission, or navigation.</small>
+                </span>
+                <span class="approval-mode-check" aria-hidden="true">✓</span>
+              </label>
+
+              <label class="approval-mode-card">
+                <input type="radio" name="approval-mode" value="auto-safe">
+                <span class="approval-mode-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.3 8-8 9-4.7-1-8-4-8-9V6l8-3Z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg>
+                </span>
+                <span class="approval-mode-copy">
+                  <strong>Approve for me</strong>
+                  <small>Allow routine actions automatically; ask only before sensitive actions.</small>
+                </span>
+                <span class="approval-mode-check" aria-hidden="true">✓</span>
+              </label>
+
+              <label class="approval-mode-card approval-mode-full">
+                <input type="radio" name="approval-mode" value="full">
+                <span class="approval-mode-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.3 8-8 9-4.7-1-8-4-8-9V6l8-3Z"></path><path d="M12 8v5M12 17h.01"></path></svg>
+                </span>
+                <span class="approval-mode-copy">
+                  <strong>Full access</strong>
+                  <small>Allow all AI web actions inside BrowsMe without asking.</small>
+                </span>
+                <span class="approval-mode-check" aria-hidden="true">✓</span>
+              </label>
+
+              <p class="approval-mode-footnote">
+                Downloads, site permissions, local-network access, saved-memory changes, file pickers, CAPTCHA, and MFA remain under your control.
+              </p>
+            </fieldset>
+
+            <div class="disclosure-card">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"></path><path d="m9 12 2 2 4-4"></path></svg>
+              <div>
+                <strong>Browser-scoped authority</strong>
+                <p>DeepSeek gets typed browser controls—not an operating-system shell. Pages, downloads, and model output are treated as untrusted.</p>
+              </div>
+            </div>
+
+            <div class="publisher-credit" aria-label="Published by Sobersided">
+              <span class="publisher-label">Published by</span>
+              <span class="publisher-wordmark">sobersided<span class="publisher-dot">.</span></span>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <span id="settings-error" class="form-error" role="alert"></span>
+            <div>
+              <button id="cancel-settings" class="secondary-button" type="button">Cancel</button>
+              <button id="save-settings" class="primary-button" type="button">Save settings</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div id="history-overlay" class="modal-overlay" hidden>
+        <section class="settings-modal history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
+          <div class="modal-header">
+            <div>
+              <span class="eyebrow">BROWSING HISTORY</span>
+              <h2 id="history-title">History</h2>
+              <p>Pages you have visited in BrowsMe. Select one to reopen it.</p>
+            </div>
+            <button id="close-history" class="mini-button" type="button" aria-label="Close history">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+            </button>
+          </div>
+          <div class="history-toolbar">
+            <div class="history-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="m15 15 5 5"></path></svg>
+              <input id="history-search" type="search" autocomplete="off" placeholder="Search history" aria-label="Search history">
+            </div>
+            <button id="history-clear" class="secondary-button" type="button">Clear all</button>
+          </div>
+          <div id="history-list" class="history-list"></div>
+        </section>
+      </div>
+
+      <div id="decision-overlay" class="modal-overlay decision-overlay" hidden>
+        <section class="decision-modal" role="alertdialog" aria-modal="true" aria-labelledby="decision-title" aria-describedby="decision-description">
+          <div id="decision-icon" class="decision-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"></path><path d="M12 8v4M12 16h.01"></path></svg>
+          </div>
+          <span id="decision-eyebrow" class="eyebrow">APPROVAL REQUIRED</span>
+          <h2 id="decision-title">Allow this browser action?</h2>
+          <p id="decision-description"></p>
+          <div id="decision-origin" class="origin-card"></div>
+          <p class="decision-footnote">The page and the AI cannot approve this. Only you can.</p>
+          <div class="decision-actions">
+            <button id="deny-decision" class="secondary-button" type="button">Deny</button>
+            <button id="allow-decision" class="primary-button" type="button">Allow once</button>
+          </div>
+        </section>
+      </div>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

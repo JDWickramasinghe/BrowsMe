@@ -1,0 +1,65 @@
+{
+  "name": "browsme",
+  "version": "0.3.0",
+  "description": "BrowsMe, an AI-assisted Chromium browser created by J.D. Wickramasinghe and powered by DeepSeek.",
+  "main": "src/main/main.js",
+  "author": "Sobersided",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node --test",
+    "test:forms": "electron scripts/form-controls-live-smoke.js",
+    "check": "node scripts/check.js",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "dev.browsme.browser",
+    "productName": "BrowsMe",
+    "copyright": "Copyright © 2026 Sobersided. Created by J.D. Wickramasinghe.",
+    "icon": "build/icon.ico",
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "enableCookieEncryption": true,
+      "grantFileProtocolExtraPrivileges": false
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "signtoolOptions": {
+        "publisherName": "Sobersided",
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      },
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    }
+  }
+}
