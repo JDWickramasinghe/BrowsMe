@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action https://www.google.com"
+    >
+    <title>New tab</title>
+    <link rel="stylesheet" href="newtab.css">
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div class="logo" aria-hidden="true">
+          <svg class="logo-mark" viewBox="0 0 64 64">
+            <defs>
+              <linearGradient id="bm-grad" x1="6" y1="8" x2="58" y2="56" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#5b67e8"></stop>
+                <stop offset="1" stop-color="#7958ef"></stop>
+              </linearGradient>
+            </defs>
+            <g fill="none" stroke="url(#bm-grad)" stroke-width="5" stroke-linecap="round">
+              <ellipse cx="32" cy="32" rx="24" ry="11" transform="rotate(45 32 32)"></ellipse>
+              <ellipse cx="32" cy="32" rx="24" ry="11" transform="rotate(-45 32 32)"></ellipse>
+            </g>
+            <circle cx="32" cy="32" r="7.5" fill="url(#bm-grad)"></circle>
+          </svg>
+        </div>
+        <h1>BrowsMe</h1>
+        <p>Created by J.D. Wickramasinghe. Browse freely—ask BrowsMe when you want a hand.</p>
+        <form action="https://www.google.com/search" method="get">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="m15 15 5 5"></path></svg>
+          <input name="q" type="search" autocomplete="off" autofocus placeholder="Search Google or type a URL" aria-label="Search Google">
+        </form>
+        <div class="tips">
+          <span><kbd>Ctrl</kbd><kbd>L</kbd> address</span>
+          <span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>A</kbd> AI terminal</span>
+          <span><kbd>Esc</kbd> stop AI</span>
+        </div>
+      </section>
+      <footer>
+        <span class="shield">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"></path><path d="m9 12 2 2 4-4"></path></svg>
+        </span>
+        <span>AI controls stay inside this browser profile.</span>
+      </footer>
+    </main>
+  </body>
+</html>

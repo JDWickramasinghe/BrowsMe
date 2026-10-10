@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output / distributables
+release/
+dist/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local QA Chromium profiles and smoke-test artifacts
+.qa-*/
+*-smoke.json
+/browsme-approval-settings.png
+/browsme-shell-ready.png
+
+# Secrets and code-signing material — never commit these
+.env
+.env.*
+*.pfx
+*.p12
+*.key
+*.pem
+*.cer
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
