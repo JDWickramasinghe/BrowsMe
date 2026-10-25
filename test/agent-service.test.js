@@ -1234,6 +1234,10 @@ function createDispatchAgent(browserExtras = {}) {
       calls.push(['closeOtherTabsForAgent', keepId]);
       return ['tab-9'];
     },
+    requestAuthentication: async (payload) => {
+      calls.push(['requestAuthentication', payload]);
+      return browserExtras.__authResult !== false;
+    },
     ...browserExtras
   };
   const agent = new AgentService({
@@ -1304,6 +1308,33 @@ test('tab_duplicate opens a scoped copy and tracks it as the current tab', async
   assert.ok(run.allowedTabIds.has('tab-2'));
   assert.equal(run.currentTabId, 'tab-2');
   assert.equal(calls[0][0], 'duplicateTabForAgent');
+});
+
+test('request_user_authentication hands off to the user and never takes credentials', () => {
+  const names = new Set(tools.map((tool) => tool.function.name));
+  assert.ok(names.has('request_user_authentication'));
+  assert.deepEqual(
+    validateToolArguments('request_user_authentication', { reason: 'Login form' }),
+    { reason: 'Login form' }
+  );
+  assert.throws(() => validateToolArguments('request_user_authentication', {}), /reason is required/);
+});
+
+test('request_user_authentication reports the sign-in outcome back to the model', async () => {
+  const signedIn = createDispatchAgent();
+  const okResult = await signedIn.agent.executeTool(dispatchRun(), 'request_user_authentication', {
+    reason: 'A login form is shown'
+  });
+  assert.equal(okResult.ok, true);
+  assert.equal(okResult.authenticated, true);
+  assert.equal(signedIn.calls.find((c) => c[0] === 'requestAuthentication')[0], 'requestAuthentication');
+
+  const declined = createDispatchAgent({ __authResult: false });
+  const blockedResult = await declined.agent.executeTool(dispatchRun(), 'request_user_authentication', {
+    reason: 'A login form is shown'
+  });
+  assert.equal(blockedResult.authenticated, false);
+  assert.match(blockedResult.note, /blocked on authentication/);
 });
 
 test('tab_close_others keeps the target tab and removes the rest from scope', async () => {

@@ -113,6 +113,10 @@
           </div>
         </nav>
         <div id="bookmarks-bar" class="bookmarks-bar" aria-label="Bookmarks bar"></div>
+        <div id="authentication-help" class="authentication-help" hidden role="status">
+          <div><strong>This site blocked sign-in in BrowsMe.</strong><span>Continue in your system browser. That sign-in stays in that browser.</span></div>
+          <button id="authentication-external" class="secondary-button" type="button">Continue in system browser</button>
+        </div>
         <div id="load-progress" class="load-progress"></div>
       </header>
 
@@ -153,20 +157,37 @@
                   <span id="ai-status-dot" class="status-dot"></span>
                   <span id="connection-label">Needs API key</span>
                   <span aria-hidden="true">·</span>
-                  <span id="model-label">DeepSeek</span>
+                  <span id="model-label">Model</span>
                   <span aria-hidden="true">·</span>
                   <span id="approval-mode-chip" class="approval-mode-chip">Ask</span>
                 </div>
               </div>
             </div>
             <div class="ai-header-actions">
-              <button id="clear-agent" class="mini-button" type="button" aria-label="Delete conversation history" title="Delete conversation history">
+              <button id="new-chat" class="mini-button" type="button" aria-label="New chat" title="New chat (Ctrl+Shift+O)">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+              <button id="chats-button" class="mini-button" type="button" aria-label="All chats" title="All chats">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+              </button>
+              <button id="clear-agent" class="mini-button" type="button" aria-label="Clear this chat" title="Clear this chat">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M8 10v7M12 10v7M16 10v7M6 7l1 14h10l1-14"></path></svg>
               </button>
               <button id="collapse-ai" class="mini-button" type="button" aria-label="Close AI terminal" title="Close">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
               </button>
             </div>
+          </div>
+
+          <div class="chat-bar">
+            <button id="chat-switcher" class="chat-switcher" type="button" aria-label="Switch chat">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10h8M8 14h5M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12Z"></path></svg>
+              <span id="chat-title">New chat</span>
+              <svg class="chat-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+            </button>
+            <button id="chat-export" class="mini-button" type="button" aria-label="Copy this chat as Markdown" title="Copy chat as Markdown">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>
+            </button>
           </div>
 
           <div id="control-banner" class="control-banner" hidden>
@@ -183,10 +204,10 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2Z"></path><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15Z"></path></svg>
               </div>
               <h2>I’m BrowsMe, created by J.D. Wickramasinghe</h2>
-              <p>I’m powered by DeepSeek and aware of my identity, browser tools, current scope, and persistent memory. Tell me what to do in this browser.</p>
+              <p>I’m aware of my identity, browser tools, current scope, and persistent memory. Tell me what to do in this browser.</p>
               <div class="privacy-note">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2"></path><rect x="5" y="10" width="14" height="10" rx="3"></rect></svg>
-                <span>Only browser content needed for your request is sent to DeepSeek.</span>
+                <span>Only browser content needed for your request is sent to the model provider.</span>
               </div>
             </section>
           </div>
@@ -252,6 +273,26 @@
         <div id="reading-list" class="downloads-list"></div>
       </section>
 
+      <section id="chats-popover" class="popover chats-popover" hidden aria-label="Chats">
+        <div class="popover-header">
+          <div>
+            <h2>Chats</h2>
+            <p>Your conversations. Each keeps its own history.</p>
+          </div>
+          <button class="mini-button" data-close-popover="chats" type="button" aria-label="Close chats">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+          </button>
+        </div>
+        <div class="chats-toolbar">
+          <div class="chats-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="m15 15 5 5"></path></svg>
+            <input id="chat-search" type="search" autocomplete="off" placeholder="Search chats" aria-label="Search chats">
+          </div>
+          <button id="chats-new" class="primary-mini" type="button">New chat</button>
+        </div>
+        <div id="chats-list" class="chats-list"></div>
+      </section>
+
       <div id="settings-overlay" class="modal-overlay" hidden>
         <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
           <div class="modal-header">
@@ -265,12 +306,29 @@
             </button>
           </div>
           <div class="settings-body">
+            <label class="provider-setting">
+              <span>Model provider</span>
+              <select id="provider-input">
+                <option value="deepseek">DeepSeek</option>
+                <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="groq">Groq</option>
+                <option value="mistral">Mistral</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="ollama">Ollama — local</option>
+                <option value="lmstudio">LM Studio — local</option>
+                <option value="custom">Custom (OpenAI-compatible)</option>
+              </select>
+              <small>Pick a cloud provider or a local model server. Changing this fills in the API address and a default model. Local servers don't need an API key.</small>
+            </label>
+
             <div class="setting-section">
               <div class="section-icon">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7a4 4 0 1 0-7.7 1.5L3 13v4h4v-2h2v-2h2.5l1-1A4 4 0 0 0 15 7Z"></path><circle cx="11" cy="7" r=".5"></circle></svg>
               </div>
               <div class="setting-content">
-                <label for="api-key">DeepSeek API key</label>
+                <label for="api-key" id="api-key-label">API key</label>
                 <div class="input-with-action">
                   <input id="api-key" name="browsme-deepseek-api-key" type="password" autocomplete="new-password" placeholder="sk-…">
                   <button id="toggle-key" type="button">Show</button>
@@ -293,7 +351,7 @@
               <label>
                 <span>Model</span>
                 <input id="model-input" type="text" value="deepseek-v4-flash" spellcheck="false">
-                <small>Fast by default; use deepseek-v4-pro for harder tasks.</small>
+                <small id="model-hint">The model id to use (e.g. deepseek-v4-flash, gpt-4o, claude-sonnet-4-5, llama3.1:8b).</small>
               </label>
               <label>
                 <span>API address</span>
@@ -346,7 +404,7 @@
             <label class="reliability-setting">
               <span>
                 <strong>Task reliability</strong>
-                <small>Controls DeepSeek thinking depth, retries, action budget, and completion verification. Maximum is slower and is not a guarantee.</small>
+                <small>Controls the model's thinking depth, retries, action budget, and completion verification. Maximum is slower and is not a guarantee.</small>
               </span>
               <select id="agent-reliability">
                 <option value="fast">Fast</option>
@@ -403,7 +461,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"></path><path d="m9 12 2 2 4-4"></path></svg>
               <div>
                 <strong>Browser-scoped authority</strong>
-                <p>DeepSeek gets typed browser controls—not an operating-system shell. Pages, downloads, and model output are treated as untrusted.</p>
+                <p>The model gets typed browser controls—not an operating-system shell. Pages, downloads, and model output are treated as untrusted.</p>
               </div>
             </div>
 
@@ -454,9 +512,10 @@
           <h2 id="decision-title">Allow this browser action?</h2>
           <p id="decision-description"></p>
           <div id="decision-origin" class="origin-card"></div>
-          <p class="decision-footnote">The page and the AI cannot approve this. Only you can.</p>
+          <p id="decision-footnote" class="decision-footnote">The page and the AI cannot approve this. Only you can.</p>
           <div class="decision-actions">
             <button id="deny-decision" class="secondary-button" type="button">Deny</button>
+            <button id="decision-external" class="secondary-button" type="button" hidden>Open in system browser</button>
             <button id="allow-decision" class="primary-button" type="button">Allow once</button>
           </div>
         </section>

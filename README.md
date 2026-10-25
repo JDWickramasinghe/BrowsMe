@@ -9,8 +9,9 @@ BrowsMe is an AI-assisted Chromium desktop browser created by J.D. Wickramasingh
 - Browsing surfaces: a searchable **History** view (`Ctrl+H`) with per-entry open/remove and clear-all, a toggleable **Bookmarks bar** (`Ctrl+Shift+B`), a **Reading list** for saving pages to read later, and a browser **menu** (`⋮`) that gathers them.
 - Personalization in Settings: a light/dark **theme toggle** (quick sun/moon switch in the toolbar, plus a system/light/dark control), a configurable **search engine** (Google, Bing, DuckDuckGo, Brave), a **startup** choice (reopen tabs or a fresh new tab), and **clear browsing data** (cookies, cache, site storage, and history).
 - Tab shortcuts: jump to a tab with `Ctrl+1`–`Ctrl+9` (9 = last), cycle with `Ctrl+Tab` / `Ctrl+Shift+Tab`, and bookmark the current page with `Ctrl+D`.
-- A resizable DeepSeek side terminal with visible plans, action results, verification receipts, connection recovery, and immediate Stop controls.
-- Browser tools for listing, opening, switching, closing, and duplicating tabs; closing other tabs; muting tabs; navigating; inspecting and finding page controls; clicking; hovering; typing and clearing; checking controls; selecting options; pressing keys; scrolling; zooming; finding visible text in a page; reading browsing history; bookmarking pages; saving pages to the reading list; condition-based waiting; observing downloads; and explicitly submitting forms. Every human page/tab action above is also available to the AI through this typed, audited tool surface.
+- A resizable AI side terminal with visible plans, action results, verification receipts, connection recovery, and immediate Stop controls.
+- A multi-chat engine: separate conversations, each with its own persisted history, plus new chat (`Ctrl+Shift+O`), a searchable chat switcher, rename, delete, auto-titling from the first message, per-message copy, and copy-chat-as-Markdown export. Durable facts are shared across all chats as cross-chat memory; conversation history is encrypted per the memory model below.
+- Browser tools for listing, opening, switching, closing, and duplicating tabs; closing other tabs; muting tabs; navigating; inspecting and finding page controls; clicking; hovering; typing and clearing; checking controls; selecting options; pressing keys; scrolling; zooming; finding visible text in a page; reading browsing history; bookmarking pages; saving pages to the reading list; requesting the user to sign in when a page needs authentication; condition-based waiting; observing downloads; and explicitly submitting forms. Every human page/tab action above is also available to the AI through this typed, audited tool surface.
 - A deterministic `observe → act → verify` loop: BrowsMe permits only one state-changing action per model turn, blocks every later mutation until the affected tab is freshly observed, and requires a later reasoning turn before it can report success.
 - Snapshot-qualified element references, live target fingerprints, moving-target checks, composed visibility checks, frame-aware overlay/occlusion checks, trusted Chromium pointer/key input, and delayed post-action evidence reduce stale or wrong-target interactions.
 - Popups and navigations are correlated to the exact agent input that caused them. Every resulting tab enters the task scope and needs its own fresh observation; failed or denied side effects prevent a false success receipt.
@@ -18,6 +19,7 @@ BrowsMe is an AI-assisted Chromium desktop browser created by J.D. Wickramasingh
 - Clicks use stable snapshot references, live target revalidation, motion and occlusion checks, and a verified visible point on wrapped or partially covered controls. Separately interactive descendants, open-shadow retargeting, and opaque frame-like surfaces (`iframe`, `object`, and `embed`) cannot substitute a different action for the approved control. Form submissions also pin the exact effective submitter and its action-bearing attributes across approval.
 - Completion evidence is goal-specific. Page, identity, memory, tab, and download observations cannot substitute for one another, and composite requests require evidence for every relevant part.
 - Three persistent approval modes let the user ask before every AI web action, automatically allow routine actions on trusted origins, or allow all audited AI web actions inside BrowsMe.
+- Authentication handoff: when a page needs a human to sign in — a login or password form, a one-time code / 2FA / MFA prompt, an OAuth consent screen, a CAPTCHA, or a "this browser is not secure / verify it's you" block — the AI detects it, never types your credentials or codes, and pauses to hand control back to you (with the option to open the page in your system browser) before it re-observes and continues.
 - Three persistent reliability modes tune DeepSeek thinking depth, bounded connection retries, action budgets, and completion checks.
 - Sandboxed remote pages with no Node.js, filesystem, shell, Electron, cookie, or unrestricted JavaScript API exposed to the model.
 - Paused downloads with safe filenames and manual Save/Deny decisions.
@@ -37,12 +39,12 @@ BrowsMe persists four separate kinds of state:
 
 1. The Chromium profile keeps cookies, local storage, and signed-in website sessions.
 2. Open tab addresses are restored on the next launch.
-3. User/assistant conversation results are stored across application restarts.
+3. User/assistant conversation results are stored per chat across application restarts; each chat keeps its own history and the active chat is restored on the next launch.
 4. Durable facts can be added by explicitly telling the AI, for example: “Remember that I prefer prices in LKR.”
 
 Conversation history and durable facts are encrypted with the operating system’s protected storage when it is available. If protected storage is unavailable, AI memory remains in the current run and is not written as plaintext. Raw page snapshots, passwords, cookies, tokens, and tool traces are not written into AI memory.
 
-The terminal’s Clear button removes conversation history but keeps explicitly remembered facts. Ask the AI to “forget …” to remove a durable fact.
+The terminal’s Clear button empties the current chat but keeps explicitly remembered facts (which are shared across every chat). Deleting a chat removes only that conversation. Ask the AI to “forget …” to remove a durable fact.
 
 ## Run it
 
@@ -53,7 +55,27 @@ npm install
 npm start
 ```
 
-Open Settings in the browser toolbar and add a DeepSeek API key. The default model is `deepseek-v4-flash`; `deepseek-v4-pro` can be selected for harder tasks.
+Open Settings in the browser toolbar, pick a **model provider**, and (for cloud providers) add its API key. The default provider is DeepSeek (`deepseek-v4-flash`).
+
+## Model providers
+
+BrowsMe is provider-agnostic. Pick a provider in Settings — it fills in the API address and a default model — then enter a key for cloud providers:
+
+- **OpenAI-compatible (cloud):** DeepSeek, OpenAI, OpenRouter, Groq, Mistral, and any other service exposing a `/chat/completions` endpoint (use **Custom**).
+- **Native APIs:** Anthropic (Claude, Messages API) and Google Gemini (`generateContent`) are supported through dedicated adapters that translate BrowsMe's tool-calling to and from each API's own shape.
+- **Local models:** Ollama (`http://localhost:11434/v1`), LM Studio (`http://localhost:1234/v1`), vLLM, llama.cpp — no API key required.
+
+The agent relies on reliable tool/function-calling and multi-step planning, so results are best with capable models; small local models may connect but drive the task loop less reliably.
+
+You can also configure the provider without the UI:
+
+```powershell
+$env:BROWSME_PROVIDER = "anthropic"   # selects the API protocol + default address
+$env:BROWSME_API_KEY = "your-key"
+$env:BROWSME_MODEL = "claude-sonnet-4-5"
+# $env:BROWSME_BASE_URL = "..."       # optional; overrides the provider's default address
+npm start
+```
 
 ## Approval modes
 
@@ -110,6 +132,10 @@ Or, for an EV certificate on a hardware token / in the Windows certificate store
 Without a certificate the app still runs; Windows will show the "unknown publisher" prompt (More info → Run anyway) until one is added.
 
 ## Browser compatibility and loading
+
+Sign-in popups retain Chromium's opener connection, `postMessage`, named-window reuse, referrer and POST requests in the same persistent profile. This supports popup authentication across providers. BrowsMe detects common embedded/unsupported-browser sign-in rejections and offers **Continue in system browser**; the same action is always available in the browser menu for HTTPS pages. Popup handoffs restart from the originating site so OAuth state and cookies can be created in that browser. Google rejection pages restart at their requested destination instead of reopening the error page.
+
+Google and other providers may reject Electron/embedded browsers regardless of browser identity. The system browser is the supported fallback for those sites. Its signed-in session stays in that browser and does not sign you into BrowsMe; continue using the site there. BrowsMe cannot guarantee that every provider accepts in-app authentication.
 
 Remote websites see the app’s real Chromium browser identity without the misleading Electron/app version token. The persistent profile explicitly uses Chromium’s HTTP cache, keeps cookies and signed-in sessions, and reports the operating-system language preferences.
 

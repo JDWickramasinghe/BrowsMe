@@ -23,13 +23,13 @@ function fsyncDirectory(directory) {
     descriptor = fs.openSync(directory, 'r');
     fs.fsyncSync(descriptor);
   } catch {
-    // Directory fsync is not supported by every platform/filesystem.
+
   } finally {
     if (descriptor !== undefined) {
       try {
         fs.closeSync(descriptor);
       } catch {
-        // Best effort only.
+
       }
     }
   }
@@ -50,13 +50,13 @@ function writeDurableTemporaryFile(filePath, data, mode) {
       try {
         fs.closeSync(descriptor);
       } catch {
-        // Preserve the original failure.
+
       }
     }
     try {
       fs.unlinkSync(temporaryPath);
     } catch {
-      // The temporary file may not have been created.
+
     }
     throw error;
   }
@@ -71,8 +71,6 @@ function replaceFileAtomically(temporaryPath, destinationPath) {
       throw replaceError;
     }
 
-    // Windows may not replace an existing destination with rename(). Move the
-    // old file aside first. The caller has already made a durable backup.
     const displacedPath = temporaryPathFor(destinationPath, 'previous');
     try {
       fs.renameSync(destinationPath, displacedPath);
@@ -88,7 +86,7 @@ function replaceFileAtomically(temporaryPath, destinationPath) {
           fs.renameSync(displacedPath, destinationPath);
         }
       } catch {
-        // Recovery can still use the durable .bak file.
+
       }
       throw commitError;
     }
@@ -96,7 +94,7 @@ function replaceFileAtomically(temporaryPath, destinationPath) {
     try {
       fs.unlinkSync(displacedPath);
     } catch {
-      // A stale displaced file is harmless and is never selected for recovery.
+
     }
   }
 }
@@ -128,8 +126,6 @@ function atomicWriteFileSync(filePath, data, options = {}) {
     if (backupEnabled) {
       let backupBytes = validBytes(filePath, options.validateExisting);
 
-      // Encrypted stores can transform legacy bytes before they become the
-      // backup. If the primary is bad or missing, sanitize a valid old backup.
       if (!backupBytes && options.transformBackup) {
         backupBytes = validBytes(backupPath, options.validateExisting);
       }
@@ -144,7 +140,7 @@ function atomicWriteFileSync(filePath, data, options = {}) {
           try {
             fs.unlinkSync(backupTemporaryPath);
           } catch {
-            // It was either committed or already removed.
+
           }
         }
       }
@@ -158,7 +154,7 @@ function atomicWriteFileSync(filePath, data, options = {}) {
       try {
         fs.unlinkSync(temporaryPath);
       } catch {
-        // Preserve the write error.
+
       }
     }
   }
@@ -186,7 +182,7 @@ function readRecoverableFileSync(filePath, decode, options = {}) {
           backup: false
         });
       } catch {
-        // The valid backup remains usable even if primary repair fails.
+
       }
     }
     return value;

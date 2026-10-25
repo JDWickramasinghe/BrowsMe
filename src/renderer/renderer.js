@@ -12,6 +12,8 @@ const ui = {
   omnibox: document.getElementById('omnibox'),
   address: document.getElementById('address'),
   security: document.getElementById('security-indicator'),
+  authenticationHelp: document.getElementById('authentication-help'),
+  authenticationExternal: document.getElementById('authentication-external'),
   bookmark: document.getElementById('bookmark'),
   loadProgress: document.getElementById('load-progress'),
   pageViewport: document.getElementById('page-viewport'),
@@ -33,6 +35,15 @@ const ui = {
   modelLabel: document.getElementById('model-label'),
   approvalModeChip: document.getElementById('approval-mode-chip'),
   clearAgent: document.getElementById('clear-agent'),
+  newChat: document.getElementById('new-chat'),
+  chatsButton: document.getElementById('chats-button'),
+  chatSwitcher: document.getElementById('chat-switcher'),
+  chatTitle: document.getElementById('chat-title'),
+  chatExport: document.getElementById('chat-export'),
+  chatsPopover: document.getElementById('chats-popover'),
+  chatSearch: document.getElementById('chat-search'),
+  chatsNew: document.getElementById('chats-new'),
+  chatsListEl: document.getElementById('chats-list'),
   suggestions: document.getElementById('suggestions'),
   downloadsButton: document.getElementById('downloads-button'),
   downloadBadge: document.getElementById('download-badge'),
@@ -48,6 +59,8 @@ const ui = {
   clearKey: document.getElementById('clear-key'),
   rememberKey: document.getElementById('remember-key'),
   apiKeyStatus: document.getElementById('api-key-status'),
+  providerInput: document.getElementById('provider-input'),
+  apiKeyLabel: document.getElementById('api-key-label'),
   modelInput: document.getElementById('model-input'),
   baseUrlInput: document.getElementById('base-url-input'),
   agentReliability: document.getElementById('agent-reliability'),
@@ -60,6 +73,8 @@ const ui = {
   decisionOrigin: document.getElementById('decision-origin'),
   denyDecision: document.getElementById('deny-decision'),
   allowDecision: document.getElementById('allow-decision'),
+  decisionFootnote: document.getElementById('decision-footnote'),
+  decisionExternal: document.getElementById('decision-external'),
   toastRegion: document.getElementById('toast-region'),
   maximizeButton: document.getElementById('maximize-button'),
   zoomReset: document.getElementById('zoom-reset'),
@@ -92,6 +107,9 @@ const state = {
     activeTabId: null
   },
   settings: {
+    provider: 'deepseek',
+    providerMeta: { label: 'DeepSeek', local: false, keyRequired: true },
+    providerCatalog: {},
     model: 'deepseek-v4-flash',
     baseUrl: 'https://api.deepseek.com',
     aiPanelWidth: 390,
@@ -114,7 +132,9 @@ const state = {
   clearKeyRequested: false,
   panelDragging: false,
   promptedDownloads: new Set(),
-  findOpen: false
+  findOpen: false,
+  chats: [],
+  activeChatId: null
 };
 
 const FIND_BAR_HEIGHT = 44;
@@ -155,7 +175,8 @@ const ICONS = {
   globe: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"></path></svg>',
   tool: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5-5L12 3.6 9.6 6 7.3 3.7a4 4 0 0 0 5 5l-7.8 7.8a2.1 2.1 0 0 0 3 3l7.8-7.8a4 4 0 0 0 5-5L18 9l-2.4-2.4 2.3-2.3a4 4 0 0 0-3.2 2Z"></path></svg>',
   file: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l4 4v16H6z"></path><path d="M14 2v5h5M9 13h6M9 17h6"></path></svg>',
-  muted: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"></path><path d="m16 9 5 6M21 9l-5 6"></path></svg>'
+  muted: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"></path><path d="m16 9 5 6M21 9l-5 6"></path></svg>',
+  copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>'
 };
 
 function activeTab() {
@@ -183,7 +204,8 @@ function reportViewport() {
   resizeFrame = requestAnimationFrame(() => {
     const rect = ui.pageViewport.getBoundingClientRect();
     const obscured = !ui.settingsOverlay.hidden || !ui.decisionOverlay.hidden ||
-      !ui.downloadsPopover.hidden || !ui.historyOverlay.hidden || !ui.readingPopover.hidden;
+      !ui.downloadsPopover.hidden || !ui.historyOverlay.hidden || !ui.readingPopover.hidden ||
+      !ui.chatsPopover.hidden;
     const findInset = state.findOpen ? FIND_BAR_HEIGHT : 0;
     window.browsme.setViewportBounds(obscured
       ? {
@@ -319,6 +341,9 @@ function renderNavigation() {
     'aria-label',
     tab.internal ? 'New tab search' : (tab.secure ? 'Secure connection' : 'Connection is not secure')
   );
+  const authenticationBlocked = tab.authenticationBlocked === true;
+  ui.authenticationHelp.hidden = !authenticationBlocked;
+  ui.app.classList.toggle('authentication-blocked', authenticationBlocked);
 
   const bookmarked = (state.settings.bookmarks || []).some((entry) => entry.url === tab.url);
   ui.bookmark.classList.toggle('is-bookmarked', bookmarked);
@@ -332,22 +357,29 @@ function renderNavigation() {
 
 function renderSettingsSummary() {
   const configured = Boolean(state.settings.apiKeyConfigured);
+  const meta = state.settings.providerMeta || { label: 'DeepSeek', keyRequired: true };
+  const keyNeeded = meta.keyRequired !== false;
+  const ready = configured || !keyNeeded;
   const approvalMode = normalizeApprovalMode(state.settings.approvalMode);
   const approvalPresentation = APPROVAL_MODE_PRESENTATION[approvalMode];
-  ui.modelLabel.textContent = state.settings.model || 'DeepSeek';
+  ui.modelLabel.textContent = state.settings.model || meta.label || 'Model';
   ui.approvalModeChip.textContent = approvalPresentation.label;
   ui.approvalModeChip.title = approvalPresentation.title;
   ui.approvalModeChip.classList.toggle('is-auto-safe', approvalMode === 'auto-safe');
   ui.approvalModeChip.classList.toggle('is-full', approvalMode === 'full');
-  ui.aiStatusDot.classList.toggle('is-offline', !configured);
+  ui.aiStatusDot.classList.toggle('is-offline', !ready);
   if (!state.agentRunning) {
-    ui.connectionLabel.textContent = configured ? 'Ready' : 'Needs API key';
+    ui.connectionLabel.textContent = ready ? 'Ready' : 'Needs API key';
   }
   ui.apiKeyStatus.textContent = configured
     ? `Configured ${state.settings.apiKeyHint || ''}`
-    : 'No key configured';
+    : keyNeeded ? 'No key configured' : 'No key needed for local models';
   ui.clearKey.hidden = !configured;
+  if (ui.apiKeyLabel) {
+    ui.apiKeyLabel.textContent = keyNeeded ? `${meta.label} API key` : `${meta.label} API key (optional)`;
+  }
   if (ui.settingsOverlay.hidden) {
+    ui.providerInput.value = state.settings.provider || 'deepseek';
     ui.rememberKey.checked = state.settings.rememberApiKey !== false;
     ui.modelInput.value = state.settings.model || 'deepseek-v4-flash';
     ui.baseUrlInput.value = state.settings.baseUrl || 'https://api.deepseek.com';
@@ -474,10 +506,18 @@ function appendMessage(role, content) {
   const meta = document.createElement('div');
   meta.className = 'message-meta';
   const author = document.createElement('span');
+  author.className = 'msg-author';
   author.textContent = role === 'ai' ? 'BrowsMe' : 'You';
   const time = document.createElement('span');
   time.textContent = formatTime();
-  meta.append(author, time);
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'message-copy';
+  copy.setAttribute('aria-label', 'Copy message');
+  copy.title = 'Copy message';
+  copy.innerHTML = ICONS.copy;
+  copy.addEventListener('click', () => copyMessageText(String(content || ''), copy));
+  meta.append(author, time, copy);
 
   const message = document.createElement('div');
   message.className = 'message-content';
@@ -803,8 +843,9 @@ async function runAgentPrompt(rawPrompt) {
     prompt = 'Use browsme_self_state, then introduce yourself, your creator, your current operational state, and your limitations.';
   }
 
-  if (!state.settings.apiKeyConfigured) {
-    showToast('Add your DeepSeek API key first.', 'warning');
+  const keyNeeded = (state.settings.providerMeta || {}).keyRequired !== false;
+  if (keyNeeded && !state.settings.apiKeyConfigured) {
+    showToast(`Add your ${(state.settings.providerMeta || {}).label || 'model provider'} API key first.`, 'warning');
     openSettings();
     return;
   }
@@ -854,7 +895,8 @@ async function clearTerminal() {
   toolCards.clear();
   currentPlanCard = null;
   currentPlanRunId = null;
-  showToast('Conversation history deleted. Explicitly remembered facts were kept.');
+  void refreshChats();
+  showToast('This chat was cleared. Explicitly remembered facts were kept.');
 }
 
 function onAgentEvent(event) {
@@ -938,6 +980,7 @@ function onAgentEvent(event) {
       retireRun(state.currentRunId);
       state.currentRunId = null;
       state.currentReliability = null;
+      void refreshChats();
       focusAgentComposer();
       break;
     case 'stopping':
@@ -1139,6 +1182,7 @@ async function saveSettings() {
     const selectedApprovalMode = ui.approvalModeInputs
       .find((input) => input.checked)?.value || 'ask';
     const input = {
+      provider: ui.providerInput.value,
       model: ui.modelInput.value,
       baseUrl: ui.baseUrlInput.value,
       rememberApiKey: ui.rememberKey.checked,
@@ -1192,18 +1236,39 @@ function showNextDecision() {
     ? 'SITE PERMISSION'
     : type === 'download'
       ? 'DOWNLOAD REQUEST'
-      : 'AI APPROVAL REQUIRED';
+      : type === 'authentication'
+        ? 'SIGN-IN NEEDED'
+        : 'AI APPROVAL REQUIRED';
   ui.decisionEyebrow.textContent = decisionQueue.length
     ? `${baseEyebrow} · ${decisionQueue.length + 1} PENDING`
     : baseEyebrow;
-  ui.decisionTitle.textContent = payload.title || 'Allow this browser action?';
+  ui.decisionTitle.textContent = payload.title ||
+    (type === 'authentication' ? 'This page needs you to sign in' : 'Allow this browser action?');
   ui.decisionDescription.textContent = payload.description ||
     (type === 'permission'
       ? `${payload.origin} wants permission to use ${payload.permission}.`
-      : 'This action needs your approval.');
+      : type === 'authentication'
+        ? `${payload.reason || 'This page requires you to sign in.'} BrowsMe can’t enter your credentials — sign in yourself, then choose “I’ve signed in”.`
+        : 'This action needs your approval.');
   ui.decisionOrigin.textContent = payload.origin || 'Current browser tab';
+  ui.denyDecision.textContent = type === 'authentication' ? 'Cancel' : 'Deny';
   ui.allowDecision.textContent = payload.confirmLabel ||
-    (type === 'permission' ? 'Allow once' : type === 'download' ? 'Save file' : 'Allow once');
+    (type === 'permission'
+      ? 'Allow once'
+      : type === 'download'
+        ? 'Save file'
+        : type === 'authentication'
+          ? 'I’ve signed in — continue'
+          : 'Allow once');
+  ui.decisionFootnote.textContent = type === 'authentication'
+    ? 'Sign-in in your system browser stays there. To continue here, this tab must be signed in too.'
+    : 'The page and the AI cannot approve this. Only you can.';
+  ui.decisionExternal.hidden = !(
+    type === 'authentication' &&
+    typeof payload.url === 'string' &&
+    /^https:\/\//i.test(payload.url)
+  );
+  ui.decisionExternal.disabled = false;
   focusBeforeOverlay = document.activeElement;
   document.querySelector('.browser-header').inert = true;
   ui.workspace.inert = true;
@@ -1226,18 +1291,21 @@ async function resolveDecision(allow) {
       await window.browsme.resolveApproval({ id: decision.payload.id, allow });
     } else if (decision.type === 'permission') {
       await window.browsme.resolvePermission({ id: decision.payload.id, allow });
+    } else if (decision.type === 'authentication') {
+      await window.browsme.resolveAuthentication({ id: decision.payload.id, allow });
     } else if (decision.type === 'download') {
       await decideDownload(decision.payload.id, allow);
     }
     currentDecision = null;
     ui.decisionOverlay.hidden = true;
+    ui.decisionExternal.hidden = true;
     if (ui.settingsOverlay.hidden) {
       document.querySelector('.browser-header').inert = false;
       ui.workspace.inert = false;
     }
     focusBeforeOverlay?.focus?.();
     focusBeforeOverlay = null;
-    if (decision.type === 'approval' && state.agentRunning) {
+    if ((decision.type === 'approval' || decision.type === 'authentication') && state.agentRunning) {
       setAgentPhase('acting');
     }
   } catch (error) {
@@ -1422,8 +1490,26 @@ function showBrowserMenu() {
       action: toggleBookmarksBar
     },
     { separator: true },
+    {
+      label: 'Continue sign-in in system browser',
+      disabled: !/^https:\/\//i.test(activeTab()?.url || ''),
+      action: () => void openAuthenticationInSystemBrowser(activeTab()?.id)
+    },
     { label: 'Clear browsing data', action: () => { openSettings(); } }
   ]);
+}
+
+async function openAuthenticationInSystemBrowser(tabId) {
+  if (!tabId) return;
+  ui.authenticationExternal.disabled = true;
+  try {
+    await window.browsme.openAuthenticationInSystemBrowser(tabId);
+    showToast('Continue sign-in in your system browser. Its session stays there.');
+  } catch (error) {
+    showToast(error.message || 'Could not open your system browser. Try again.', 'danger');
+  } finally {
+    ui.authenticationExternal.disabled = false;
+  }
 }
 
 async function bookmarkActive() {
@@ -1604,6 +1690,214 @@ async function clearBrowsingDataAction() {
   }
 }
 
+function copyMessageText(text, button) {
+  window.browsme.copyText(text).then(() => {
+    if (button) {
+      const original = button.innerHTML;
+      button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4 10-10"></path></svg>';
+      setTimeout(() => { button.innerHTML = original; }, 1200);
+    }
+  }).catch((error) => showToast(error.message, 'danger'));
+}
+
+function relativeTime(iso) {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) {
+    return '';
+  }
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function renderConversation(messages) {
+  for (const child of Array.from(ui.terminalLog.children)) {
+    if (!child.classList.contains('welcome-card')) {
+      child.remove();
+    }
+  }
+  toolCards.clear();
+  currentPlanCard = null;
+  currentPlanRunId = null;
+  for (const entry of messages || []) {
+    appendMessage(entry.role === 'assistant' ? 'ai' : 'user', entry.content);
+  }
+  scrollTerminal();
+}
+
+function renderChatBar() {
+  const active = state.chats.find((c) => c.id === state.activeChatId) ||
+    state.chats.find((c) => c.active);
+  ui.chatTitle.textContent = active ? active.title : 'New chat';
+}
+
+function renderChatsList() {
+  const query = (ui.chatSearch.value || '').trim().toLowerCase();
+  const chats = query
+    ? state.chats.filter((c) => c.title.toLowerCase().includes(query))
+    : state.chats;
+  ui.chatsListEl.replaceChildren();
+  if (!chats.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = query ? 'No chats match your search.' : 'No chats yet.';
+    ui.chatsListEl.append(empty);
+    return;
+  }
+  for (const chat of chats) {
+    const item = document.createElement('div');
+    item.className = 'chat-item';
+    item.classList.toggle('is-active', chat.id === state.activeChatId);
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'chat-item-body';
+    const title = document.createElement('div');
+    title.className = 'chat-item-title';
+    title.textContent = chat.title;
+    const metaEl = document.createElement('div');
+    metaEl.className = 'chat-item-meta';
+    metaEl.textContent = `${chat.messageCount} message${chat.messageCount === 1 ? '' : 's'} · ${relativeTime(chat.updatedAt)}`;
+    bodyEl.append(title, metaEl);
+    bodyEl.addEventListener('click', () => void switchChat(chat.id));
+
+    const actions = document.createElement('div');
+    actions.className = 'chat-item-actions';
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.title = 'Rename';
+    rename.setAttribute('aria-label', 'Rename chat');
+    rename.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
+    rename.addEventListener('click', (event) => { event.stopPropagation(); void renameChat(chat); });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.title = 'Delete';
+    del.setAttribute('aria-label', 'Delete chat');
+    del.innerHTML = ICONS.close;
+    del.addEventListener('click', (event) => { event.stopPropagation(); void deleteChat(chat); });
+    actions.append(rename, del);
+
+    item.append(bodyEl, actions);
+    ui.chatsListEl.append(item);
+  }
+}
+
+function toggleChatsPopover(force) {
+  const show = typeof force === 'boolean' ? force : ui.chatsPopover.hidden;
+  ui.chatsPopover.hidden = !show;
+  reportViewport();
+  if (show) {
+    ui.chatSearch.value = '';
+    renderChatsList();
+    setTimeout(() => ui.chatSearch.focus(), 20);
+  }
+}
+
+async function refreshChats() {
+  try {
+    state.chats = await window.browsme.chatList();
+    const active = state.chats.find((c) => c.active);
+    if (active) {
+      state.activeChatId = active.id;
+    }
+    renderChatBar();
+    if (!ui.chatsPopover.hidden) {
+      renderChatsList();
+    }
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+}
+
+async function newChat() {
+  if (state.agentRunning) {
+    showToast('Stop the current task before starting a new chat.', 'warning');
+    return;
+  }
+  try {
+    const result = await window.browsme.chatNew();
+    state.chats = result.sessions;
+    state.activeChatId = result.session.id;
+    renderConversation([]);
+    renderChatBar();
+    toggleChatsPopover(false);
+    focusAgentComposer();
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+}
+
+async function switchChat(id) {
+  if (id === state.activeChatId) {
+    toggleChatsPopover(false);
+    return;
+  }
+  if (state.agentRunning) {
+    showToast('Stop the current task before switching chats.', 'warning');
+    return;
+  }
+  try {
+    const result = await window.browsme.chatSwitch(id);
+    state.chats = result.sessions;
+    state.activeChatId = result.activeId;
+    renderConversation(result.messages);
+    renderChatBar();
+    toggleChatsPopover(false);
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+}
+
+async function renameChat(chat) {
+  const title = window.prompt('Rename chat', chat.title);
+  if (title == null) {
+    return;
+  }
+  try {
+    state.chats = await window.browsme.chatRename(chat.id, title);
+    renderChatBar();
+    renderChatsList();
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+}
+
+async function deleteChat(chat) {
+  if (!window.confirm(`Delete “${chat.title}”? This removes its conversation.`)) {
+    return;
+  }
+  const wasActive = chat.id === state.activeChatId;
+  try {
+    const result = await window.browsme.chatDelete(chat.id);
+    state.chats = result.sessions;
+    state.activeChatId = result.activeId;
+    if (wasActive) {
+      renderConversation(result.messages);
+    }
+    renderChatBar();
+    renderChatsList();
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+}
+
+async function exportActiveChat() {
+  try {
+    const markdown = await window.browsme.chatExport(state.activeChatId);
+    if (!markdown || !markdown.trim()) {
+      showToast('This chat is empty.', 'warning');
+      return;
+    }
+    await window.browsme.copyText(markdown);
+    showToast('Chat copied to clipboard as Markdown.');
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+}
+
 function bindEvents() {
   ui.newTab.addEventListener('click', () => {
     window.browsme.newTab({}).catch((error) => showToast(error.message, 'danger'));
@@ -1722,6 +2016,21 @@ function bindEvents() {
   ui.readingPopover.querySelector('[data-close-popover]')
     .addEventListener('click', () => toggleReadingPopover(false));
   ui.clearData.addEventListener('click', () => void clearBrowsingDataAction());
+  ui.providerInput.addEventListener('change', () => {
+    const preset = (state.settings.providerCatalog || {})[ui.providerInput.value];
+    if (!preset) {
+      return;
+    }
+    ui.baseUrlInput.value = preset.baseUrl || '';
+    if (preset.defaultModel) {
+      ui.modelInput.value = preset.defaultModel;
+    }
+    if (ui.apiKeyLabel) {
+      ui.apiKeyLabel.textContent = preset.keyRequired === false
+        ? `${preset.label} API key (optional)`
+        : `${preset.label} API key`;
+    }
+  });
 
   ui.aiToggle.addEventListener('click', () => setAiPanelOpen(!state.settings.aiPanelOpen));
   ui.collapseAi.addEventListener('click', () => setAiPanelOpen(false));
@@ -1753,6 +2062,14 @@ function bindEvents() {
   ui.clearAgent.addEventListener('click', () => {
     void clearTerminal();
   });
+  ui.newChat.addEventListener('click', () => void newChat());
+  ui.chatsButton.addEventListener('click', () => toggleChatsPopover());
+  ui.chatSwitcher.addEventListener('click', () => toggleChatsPopover());
+  ui.chatExport.addEventListener('click', () => void exportActiveChat());
+  ui.chatsNew.addEventListener('click', () => void newChat());
+  ui.chatSearch.addEventListener('input', renderChatsList);
+  ui.chatsPopover.querySelector('[data-close-popover]')
+    .addEventListener('click', () => toggleChatsPopover(false));
 
   ui.downloadsButton.addEventListener('click', () => toggleDownloads());
   ui.downloadsPopover.querySelector('[data-close-popover]').addEventListener('click', () => toggleDownloads(false));
@@ -1772,6 +2089,20 @@ function bindEvents() {
   });
   ui.denyDecision.addEventListener('click', () => void resolveDecision(false));
   ui.allowDecision.addEventListener('click', () => void resolveDecision(true));
+  ui.decisionExternal.addEventListener('click', () => {
+    const tabId = currentDecision?.payload?.tabId;
+    if (tabId) {
+      void openAuthenticationInSystemBrowser(tabId);
+      return;
+    }
+    const url = currentDecision?.payload?.url;
+    if (url) {
+      window.browsme.openExternal(url).catch((error) => showToast(error.message, 'danger'));
+    }
+  });
+  ui.authenticationExternal.addEventListener('click', () => {
+    void openAuthenticationInSystemBrowser(activeTab()?.id);
+  });
 
   for (const button of document.querySelectorAll('[data-window-action]')) {
     button.addEventListener('click', () => {
@@ -1822,6 +2153,8 @@ function bindEvents() {
         toggleDownloads(false);
       } else if (!ui.readingPopover.hidden) {
         toggleReadingPopover(false);
+      } else if (!ui.chatsPopover.hidden) {
+        toggleChatsPopover(false);
       } else if (state.findOpen) {
         closeFind();
       }
@@ -1858,6 +2191,12 @@ async function initialize() {
       }
     });
   });
+  window.browsme.onAuthenticationRequest((payload) => {
+    if (state.agentRunning) {
+      setAgentPhase('approval', 'Waiting for you to sign in');
+    }
+    enqueueDecision({ type: 'authentication', payload });
+  });
   window.browsme.onDownloadsState(onDownloadsState);
   window.browsme.onFindResult(updateFindCount);
   window.browsme.onToast((payload) => showToast(payload.message, payload.tone));
@@ -1878,9 +2217,11 @@ async function initialize() {
       void bookmarkActive();
     } else if (command === 'toggle-bookmarks-bar') {
       void toggleBookmarksBar();
+    } else if (command === 'new-chat') {
+      void newChat();
     } else if (command === 'cancel-agent-decisions') {
-      decisionQueue.splice(0, decisionQueue.length, ...decisionQueue.filter((item) => item.type !== 'approval'));
-      if (currentDecision?.type === 'approval') {
+      decisionQueue.splice(0, decisionQueue.length, ...decisionQueue.filter((item) => item.type !== 'approval' && item.type !== 'authentication'));
+      if (currentDecision?.type === 'approval' || currentDecision?.type === 'authentication') {
         currentDecision = null;
         ui.decisionOverlay.hidden = true;
         if (ui.settingsOverlay.hidden) {
@@ -1915,11 +2256,16 @@ async function initialize() {
     const initial = await window.browsme.getInitialState();
     state.downloads = initial.downloads || [];
     state.memory = initial.memory || null;
+    state.chats = Array.isArray(initial.chats) ? initial.chats : [];
+    state.activeChatId = state.memory?.activeSessionId ||
+      state.chats.find((c) => c.active)?.id || null;
     renderBrowser(initial);
     renderDownloads();
-    if (state.memory && (state.memory.conversationMessages > 0 || state.memory.rememberedFacts > 0)) {
+    renderChatBar();
+    renderConversation(initial.activeChatMessages || []);
+    if (state.memory && state.memory.rememberedFacts > 0) {
       appendSystemNote(
-        `Persistent memory loaded · ${state.memory.conversationMessages} conversation messages · ${state.memory.rememberedFacts} remembered facts`
+        `Persistent memory loaded · ${state.memory.rememberedFacts} remembered fact${state.memory.rememberedFacts === 1 ? '' : 's'} carried across chats`
       );
     }
     reportViewport();

@@ -18,7 +18,10 @@ const {
   isPrivateNetworkUrl,
   resolveAddress
 } = require('./url-utils');
-const { buildCompatibleUserAgent, safeUrlForModel } = require('./browser-compat');
+const {
+  buildCompatibleUserAgent, safeUrlForModel,
+  isAuthenticationBrowserBlocked, systemBrowserAuthenticationUrl
+} = require('./browser-compat');
 const {
   applyReferencedOption,
   applyReferencedValue,
@@ -41,10 +44,6 @@ const ZOOM_STEPS = [
   0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5
 ];
 
-// Present a clean, current Chromium identity to remote sites via User-Agent
-// Client Hints, so BrowsMe is never flagged as an unknown embedded framework.
-// Honest: it reports the real Chromium version it runs on, branded "Chromium"
-// (never "Electron" or the app name, and it does not impersonate Google Chrome).
 function chromiumVersions() {
   const full = String(process.versions && process.versions.chrome
     ? process.versions.chrome
@@ -66,13 +65,13 @@ function clientHintPlatform() {
 function buildClientHints() {
   const { full, major } = chromiumVersions();
   return {
-    // Low-entropy hints sent by default on secure requests.
+
     low: {
       'sec-ch-ua': `"Chromium";v="${major}", "Not.A/Brand";v="99"`,
       'sec-ch-ua-mobile': '?0',
       'sec-ch-ua-platform': `"${clientHintPlatform()}"`
     },
-    // High-entropy hints sent only when a site requests them via Accept-CH.
+
     high: {
       'sec-ch-ua-full-version-list': `"Chromium";v="${full}", "Not.A/Brand";v="99.0.0.0"`,
       'sec-ch-ua-full-version': `"${full}"`,
@@ -324,6 +323,7 @@ class BrowserController {
     this.emitToast = options.emitToast;
     this.requestApproval = options.requestApproval;
     this.requestPermission = options.requestPermission;
+    this.requestAuthentication = options.requestAuthentication;
     this.emitDownloads = options.emitDownloads;
     this.emitFind = options.emitFind;
     this.getSearchUrl = options.getSearchUrl;
@@ -458,9 +458,7 @@ class BrowserController {
         }
       }
       if (!activeGrantRunId && activeGrantCompetesWithRequest) {
-        // A request that arrives after the trusted-input window closed, or one
-        // whose destination/method/query/body does not exactly match, must not
-        // fall through as an ordinary same-origin page navigation.
+
         conflictingGrantRequest = true;
       }
       let conflictSentinel = existingConflictSentinel;
@@ -553,8 +551,6 @@ class BrowserController {
         return;
       }
 
-      // Normalize browser-identity headers on every request so remote sites
-      // see a clean, current Chromium browser — never Electron or the app name.
       const sourceHeaders = details.requestHeaders || {};
       const normalizedHeaders = {};
       let identityChanged = false;
@@ -759,7 +755,7 @@ class BrowserController {
       try {
         this.trustAgentOrigin(this.getTab(tabId).url);
       } catch {
-        // Closed tabs are ignored when a run starts.
+
       }
     }
   }
@@ -1233,8 +1229,7 @@ class BrowserController {
       return;
     }
     if (grant.networkRequestId === null || !tab.loading) {
-      // Retirement revokes all authority while preserving a short conflict
-      // boundary for requests Chromium or the page delivers slightly later.
+
       this.retireNavigationGrant(tab, grant);
     }
   }
@@ -1478,7 +1473,6 @@ class BrowserController {
     if (this.tabs.size >= 30) {
       throw new Error('The browser tab limit has been reached.');
     }
-    const activate = options.activate !== false;
     const source = options.source || 'user';
     const initialUrl = assertNavigableUrl(resolveAddress(
       rawUrl,
@@ -1546,22 +1540,47 @@ class BrowserController {
         privateNetworkApproved = true;
       }
     }
+    const tab = this.allocateTab(initialUrl, options);
+    const approvedSource = source === 'agent'
+      ? 'agent-preapproved'
+      : source === 'page'
+        ? 'page-preapproved'
+        : source;
+    if (!tab.deferredUrl) {
+      await this.loadTab(
+        tab, initialUrl, approvedSource, options.signal, options.loadOptions,
+        { privateNetworkApproved, requestShape: options.requestShape || null }
+      );
+    }
+    return tab.id;
+  }
+
+  remoteWebPreferences() {
+    return {
+      session: this.profileSession,
+      nodeIntegration: false,
+      nodeIntegrationInWorker: false,
+      nodeIntegrationInSubFrames: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
+      devTools: !app.isPackaged,
+      autoplayPolicy: 'user-gesture-required',
+      plugins: true
+    };
+  }
+
+  allocateTab(initialUrl, options = {}) {
+    if (this.tabs.size >= 30) {
+      throw new Error('The browser tab limit has been reached.');
+    }
     const id = crypto.randomUUID();
     const view = new WebContentsView({
-      webPreferences: {
-        session: this.profileSession,
-        nodeIntegration: false,
-        nodeIntegrationInWorker: false,
-        contextIsolation: true,
-        sandbox: true,
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-        webviewTag: false,
-        devTools: !app.isPackaged,
-        autoplayPolicy: 'user-gesture-required',
-        // Chromium's bundled PDF viewer renders PDFs inline like Chrome.
-        plugins: true
-      }
+      ...(options.webContents ? { webContents: options.webContents } : {}),
+
+      webPreferences: { ...options.nativeWebPreferences, ...this.remoteWebPreferences() }
     });
     view.webContents.setUserAgent(this.profileSession.getUserAgent());
     view.webContents.setBackgroundThrottling(false);
@@ -1570,10 +1589,12 @@ class BrowserController {
       id,
       view,
       title: String(options.title || 'New tab').slice(0, 300),
-      url: options.deferLoad ? initialUrl : INTERNAL_NEW_TAB,
+      url: options.deferLoad ? initialUrl : (options.nativePopup ? 'about:blank' : INTERNAL_NEW_TAB),
       loading: false,
       favicon: '',
       crashed: false,
+      authenticationBlocked: false,
+      authenticationInitiatorUrl: options.authenticationInitiatorUrl || '',
       navEpoch: 0,
       navigationDecisionEpoch: 0,
       snapshotSequence: 0,
@@ -1587,36 +1608,18 @@ class BrowserController {
       refs: new Map()
     };
     this.tabs.set(id, tab);
-    if (source === 'agent' && this.agentApprovalRunId) {
+    if (options.source === 'agent' && this.agentApprovalRunId) {
       this.agentApprovalTabIds.add(id);
     }
     this.attachTabEvents(tab);
 
-    if (activate) {
+    if (options.activate !== false) {
       this.activateTab(id);
     } else {
       this.broadcastState();
     }
 
-    const approvedSource = source === 'agent'
-      ? 'agent-preapproved'
-      : source === 'page'
-        ? 'page-preapproved'
-        : source;
-    if (!tab.deferredUrl) {
-      await this.loadTab(
-        tab,
-        initialUrl,
-        approvedSource,
-        options.signal,
-        options.loadOptions,
-        {
-          privateNetworkApproved,
-          requestShape: options.requestShape || null
-        }
-      );
-    }
-    return id;
+    return tab;
   }
 
   attachTabEvents(tab) {
@@ -1641,11 +1644,12 @@ class BrowserController {
       updateNavigation();
     });
     contents.on('dom-ready', () => {
-      // Modern apps can keep nonessential resources pending for a long time.
-      // Treat the page as ready once its document is interactive.
+
       tab.loading = false;
       updateNavigation();
+      void this.checkAuthenticationCompatibility(tab);
     });
+    contents.on('did-finish-load', () => void this.checkAuthenticationCompatibility(tab));
     contents.on('did-start-navigation', (event, legacyUrl, _isInPlace, legacyIsMainFrame) => {
       const isMainFrame =
         typeof event?.isMainFrame === 'boolean'
@@ -1654,6 +1658,7 @@ class BrowserController {
       if (isMainFrame) {
         tab.navEpoch += 1;
         tab.refs.clear();
+        tab.authenticationBlocked = false;
       }
     });
     contents.on('did-navigate', (_event, url) => {
@@ -1665,6 +1670,7 @@ class BrowserController {
       updateNavigation();
       if (isMainFrame) {
         this.recordVisit(url, contents.getTitle());
+        void this.checkAuthenticationCompatibility(tab);
       }
     });
     contents.on('page-title-updated', (_event, title) => {
@@ -1698,6 +1704,9 @@ class BrowserController {
 
     const guardRendererNavigation = (event, url, isRedirect = false) => {
       try {
+        if (url === 'about:blank') {
+          return;
+        }
         const safeUrl = assertNavigableUrl(url);
         if (this.navigationGrantAllows(tab, safeUrl, isRedirect)) {
           if (isRedirect) {
@@ -1706,11 +1715,7 @@ class BrowserController {
           return;
         }
         if (/^https?:/i.test(safeUrl)) {
-          // Preserve Chromium's original request, including POST bodies and
-          // 307/308 redirect semantics. The guarded session re-resolves and
-          // authorizes every HTTP(S) main-frame destination before it is sent.
-          // Unknown page transitions remain page-scoped even while trusted
-          // input is being dispatched.
+
           if (isRedirect) {
             tab.activeLoadContext?.allowRedirect(safeUrl);
           }
@@ -1749,9 +1754,20 @@ class BrowserController {
       );
     });
 
-    contents.setWindowOpenHandler(({ url, postBody, referrer }) => {
+    contents.on('destroyed', () => {
+      if (!this.destroying && this.tabs.has(tab.id)) {
+        this.closeTab(tab.id);
+      }
+    });
+
+    contents.setWindowOpenHandler(({ url, postBody, referrer, disposition }) => {
       try {
-        const allowedUrl = assertNavigableUrl(url);
+        const allowedUrl = url === 'about:blank'
+          ? url
+          : assertNavigableUrl(url, { allowInternal: false });
+        if (this.tabs.size >= 30) {
+          throw new Error('The browser tab limit has been reached.');
+        }
         const initiatorGrant = tab.preapprovedNavigationGrant;
         const requestMethod = popupRequestMethod(postBody);
         const grantCoversPopup =
@@ -1801,36 +1817,51 @@ class BrowserController {
           preapprovedByInitiator &&
           initiatorGrant?.privateNetworkApproved === true;
         if (preapprovedByInitiator) {
-          // The new tab owns the approved navigation now. The source tab must
-          // retain only a non-authorizing sentinel so a second main-frame
-          // request from the same trusted handler cannot bypass page approval.
+
           initiatorGrant.initialConsumed = true;
           this.retireNavigationGrant(tab, initiatorGrant);
         }
-        const operation = this.createTab(allowedUrl, {
-          activate: true,
-          source: agentInitiated ? 'agent' : 'page',
-          initiatorTabId: tab.id,
-          runId: operationRunId,
-          preapprovedByInitiator,
-          privateNetworkApproved,
-          requestShape: preapprovedByInitiator
-            ? { ...initiatorGrant.requestShape }
-            : null,
-          loadOptions: popupLoadOptions(postBody, referrer)
-        }).then((newTabId) => ({
-          kind: 'popup',
-          runId: operationRunId,
-          initiatorTabId: tab.id,
-          newTabId
-        }));
-        if (agentInitiated) {
-          void this.trackAgentSideEffect(operation, operationRunId);
-        } else {
-          void operation.catch((error) => {
-            this.emitToast({ tone: 'danger', message: `Popup blocked: ${error.message}` });
-          });
-        }
+        return {
+          action: 'allow',
+          outlivesOpener: true,
+          overrideBrowserWindowOptions: { webPreferences: this.remoteWebPreferences() },
+          createWindow: (nativeOptions) => {
+
+            const popup = this.allocateTab(allowedUrl, {
+              webContents: nativeOptions.webContents,
+              nativeWebPreferences: nativeOptions.webPreferences,
+              nativePopup: true,
+              authenticationInitiatorUrl: tab.authenticationInitiatorUrl || tab.url,
+              activate: disposition !== 'background-tab',
+              source: agentInitiated ? 'agent' : 'page'
+            });
+            if (preapprovedByInitiator) {
+              this.grantNavigationChain(
+                popup, allowedUrl, operationRunId, popup.loadRequestEpoch + 1,
+                { privateNetworkApproved, requestShape: { ...initiatorGrant.requestShape } }
+              );
+            }
+            const nativeNavigation = Boolean(nativeOptions.webContents);
+            const ready = allowedUrl === 'about:blank'
+              ? Promise.resolve()
+              : this.loadUntilDomReady(
+                  popup, allowedUrl, undefined,
+                  popupLoadOptions(postBody, referrer), nativeNavigation
+                );
+            const operation = ready.then(() => ({
+              kind: 'popup', runId: operationRunId,
+              initiatorTabId: tab.id, newTabId: popup.id
+            }));
+            if (agentInitiated) {
+              void this.trackAgentSideEffect(operation, operationRunId);
+            } else {
+              void operation.catch((error) => {
+                this.emitToast({ tone: 'danger', message: `Popup blocked: ${error.message}` });
+              });
+            }
+            return popup.view.webContents;
+          }
+        };
       } catch (error) {
         this.emitToast({ tone: 'danger', message: `Popup blocked: ${error.message}` });
       }
@@ -1879,6 +1910,39 @@ class BrowserController {
     );
 
     Menu.buildFromTemplate(template).popup({ window: this.window });
+  }
+
+  async checkAuthenticationCompatibility(tab) {
+    const contents = tab.view.webContents;
+    if (contents.isDestroyed() || !/^https?:/i.test(contents.getURL())) {
+      return;
+    }
+    const url = contents.getURL();
+    const navEpoch = tab.navEpoch;
+    let blocked = isAuthenticationBrowserBlocked({ url });
+    if (!blocked) {
+      try {
+        const text = await contents.executeJavaScriptInIsolatedWorld(
+          AUTOMATION_WORLD_ID,
+          [{ code: '(document.body?.innerText || "").slice(0, 30000)' }],
+          false
+        );
+        blocked = isAuthenticationBrowserBlocked({ url, text });
+      } catch {
+        return;
+      }
+    }
+    if (!contents.isDestroyed() && this.tabs.get(tab.id) === tab && tab.navEpoch === navEpoch && contents.getURL() === url) {
+      if (tab.authenticationBlocked !== blocked) {
+        tab.authenticationBlocked = blocked;
+        this.broadcastState();
+      }
+    }
+  }
+
+  getSystemBrowserAuthenticationUrl(tabId = this.activeTabId) {
+    const tab = this.getTab(tabId);
+    return systemBrowserAuthenticationUrl(tab.url, tab.authenticationInitiatorUrl);
   }
 
   async loadTab(
@@ -2002,7 +2066,7 @@ class BrowserController {
             requestShape: navigationOptions.requestShape || null
           }
         );
-        // loadURL does not emit will-navigate for programmatic navigation.
+
         programmaticGrant.initialConsumed = true;
       } else {
         tab.preapprovedNavigationGrant = null;
@@ -2028,16 +2092,17 @@ class BrowserController {
     return safeUrl;
   }
 
-  async loadUntilDomReady(tab, url, signal, loadOptions = {}) {
+  async loadUntilDomReady(tab, url, signal, loadOptions = {}, nativeNavigation = false) {
     const contents = tab.view.webContents;
     this.failActiveLoad(tab, 'NAVIGATION_SUPERSEDED');
     tab.loadRequestEpoch += 1;
     const requestEpoch = tab.loadRequestEpoch;
     if (
+      !nativeNavigation &&
       tab.preapprovedNavigationGrant?.exactUrl === url &&
       tab.preapprovedNavigationGrant.loadRequestEpoch === requestEpoch
     ) {
-      // loadURL does not emit will-navigate for programmatic navigation.
+
       tab.preapprovedNavigationGrant.initialConsumed = true;
     }
     const loadGrant = tab.preapprovedNavigationGrant;
@@ -2194,6 +2259,9 @@ class BrowserController {
         return;
       }
       signal?.addEventListener('abort', onAbort, { once: true });
+      if (nativeNavigation) {
+        return;
+      }
       try {
         contents.loadURL(url, loadOptions).then(
           () => {
@@ -2224,6 +2292,9 @@ class BrowserController {
 
   async navigate(tabId, rawInput, source = 'user', options = {}) {
     const tab = this.getTab(tabId);
+    if (source === 'user') {
+      tab.authenticationInitiatorUrl = '';
+    }
     return this.loadTab(tab, rawInput, source, options.signal);
   }
 
@@ -2240,7 +2311,7 @@ class BrowserController {
       try {
         this.window.contentView.removeChildView(previous.view);
       } catch {
-        // It may already be detached during shutdown.
+
       }
     }
 
@@ -2263,7 +2334,11 @@ class BrowserController {
   }
 
   closeTab(tabId) {
-    const tab = this.getTab(tabId);
+
+    const tab = this.tabs.get(tabId);
+    if (!tab) {
+      throw new Error('TAB_CLOSED');
+    }
     const ids = Array.from(this.tabs.keys());
     const closingIndex = ids.indexOf(tabId);
     const wasActive = this.activeTabId === tabId;
@@ -2275,12 +2350,12 @@ class BrowserController {
       try {
         this.window.contentView.removeChildView(tab.view);
       } catch {
-        // Already detached.
+
       }
     }
 
     this.tabs.delete(tabId);
-    if (!tab.view.webContents.isDestroyed()) {
+    if (tab.view.webContents && !tab.view.webContents.isDestroyed()) {
       tab.view.webContents.close();
     }
 
@@ -2506,7 +2581,7 @@ class BrowserController {
   getTab(tabId) {
     const id = tabId || this.activeTabId;
     const tab = this.tabs.get(id);
-    if (!tab || tab.view.webContents.isDestroyed()) {
+    if (!tab || !tab.view.webContents || tab.view.webContents.isDestroyed()) {
       throw new Error('TAB_CLOSED');
     }
     return tab;
@@ -2522,8 +2597,6 @@ class BrowserController {
     this.emitVisit({ url: String(url), title: String(title || ''), at: Date.now() });
   }
 
-  // ---- Chrome-parity page/tab actions (user-initiated only) ----
-
   findInPage(tabId, text, options = {}) {
     const tab = this.getTab(tabId);
     const contents = tab.view.webContents;
@@ -2535,7 +2608,7 @@ class BrowserController {
       }
       return 0;
     }
-    // The page must hold focus for Chromium to emit `found-in-page` results.
+
     contents.focus();
     return contents.findInPage(query, {
       forward: options.forward !== false,
@@ -2632,8 +2705,6 @@ class BrowserController {
     return true;
   }
 
-  // ---- Agent-facing variants of the Chrome-parity actions ----
-
   setTabMuted(tabId, muted) {
     const tab = this.getTab(tabId);
     tab.view.webContents.setAudioMuted(Boolean(muted));
@@ -2718,6 +2789,7 @@ class BrowserController {
           loading: tab.loading,
           favicon: tab.favicon,
           crashed: tab.crashed,
+          authenticationBlocked: tab.authenticationBlocked,
           canGoBack: !contents.isDestroyed() && contents.navigationHistory.canGoBack(),
           canGoForward: !contents.isDestroyed() && contents.navigationHistory.canGoForward(),
           secure: tab.url.startsWith('https:') || isInternalUrl(tab.url),
@@ -3436,7 +3508,7 @@ class BrowserController {
           }
         );
       } catch {
-        // Submission may replace the document before the field can be inspected.
+
       }
       evidence = await this.waitForActionEvidence(
         tab,
@@ -3606,7 +3678,7 @@ class BrowserController {
           { token: entry.token }
         );
       } catch {
-        // A reactive field may replace itself after input/change events.
+
       }
       const stateMatched = finalState?.structuredValue === resolvedAfter.normalized;
       return {
@@ -3776,7 +3848,7 @@ class BrowserController {
           { token: entry.token }
         );
       } catch {
-        // A reactive control may replace itself after the change event.
+
       }
       const stateMatched =
         JSON.stringify(selectedState?.selectedIndices || []) ===
@@ -3902,7 +3974,7 @@ class BrowserController {
           { token: entry.token }
         );
       } catch {
-        // A reactive control may replace itself after activation.
+
       }
       const stateMatched =
         finalState?.checked === checked &&
@@ -4008,7 +4080,7 @@ class BrowserController {
           { token: entry.token }
         );
       } catch {
-        // A reactive option may replace itself after activation.
+
       }
       const stateMatched = finalState?.selected === selected;
       return {
@@ -4394,6 +4466,7 @@ class BrowserController {
   }
 
   async destroy() {
+    this.destroying = true;
     if (this.onBeforeMainFrameRequest) {
       this.profileSession.webRequest.onBeforeRequest(null);
       this.onBeforeMainFrameRequest = null;
@@ -4411,9 +4484,9 @@ class BrowserController {
       try {
         this.window.contentView.removeChildView(tab.view);
       } catch {
-        // Already detached.
+
       }
-      if (!tab.view.webContents.isDestroyed()) {
+      if (tab.view.webContents && !tab.view.webContents.isDestroyed()) {
         tab.view.webContents.close();
       }
     }
