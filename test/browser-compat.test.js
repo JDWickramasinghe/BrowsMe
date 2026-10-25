@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 const {
   buildAcceptLanguages,
   buildCompatibleUserAgent,
+  isAuthenticationBrowserBlocked,
+  systemBrowserAuthenticationUrl,
   safeUrlForModel
 } = require('../src/main/browser-compat');
 
@@ -31,6 +33,27 @@ test('compatible user agent removes only app and Electron product tokens', () =>
   );
   assert.match(compatible, /Chrome\/144\.0\.7559\.110/);
   assert.doesNotMatch(compatible, /(?:BrowsMe|Electron)\//i);
+});
+
+test('authentication browser restrictions are detected across providers', () => {
+  assert.equal(isAuthenticationBrowserBlocked({ url: 'https://accounts.google.com/v3/signin/rejected?continue=x' }), true);
+  assert.equal(isAuthenticationBrowserBlocked({ url: 'https://login.example.com/error?error=disallowed_useragent' }), true);
+  assert.equal(isAuthenticationBrowserBlocked({ text: 'This browser or app may not be secure.' }), true);
+  assert.equal(isAuthenticationBrowserBlocked({ text: 'Sign in is unavailable in an embedded browser.' }), true);
+  assert.equal(isAuthenticationBrowserBlocked({ text: 'This browser is not supported. Please log in using another browser.' }), true);
+  assert.equal(isAuthenticationBrowserBlocked({ text: 'Incorrect password. Try again.' }), false);
+  assert.equal(isAuthenticationBrowserBlocked({ url: 'https://accounts.google.com/v3/signin/identifier', text: 'Sign in to your account' }), false);
+});
+
+test('system-browser authentication restarts at the originating site or Google destination', () => {
+  assert.equal(systemBrowserAuthenticationUrl('https://login.example.com/oauth?state=old', 'https://shop.example.com/login'), 'https://shop.example.com/login');
+  assert.equal(systemBrowserAuthenticationUrl('https://accounts.google.com/v3/signin/rejected?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F'), 'https://mail.google.com/mail/');
+  assert.equal(systemBrowserAuthenticationUrl('https://accounts.google.com/v3/signin/rejected'), 'https://accounts.google.com/');
+  assert.equal(systemBrowserAuthenticationUrl('https://accounts.google.com.evil.test/v3/signin/rejected?continue=https%3A%2F%2Fother.test'), 'https://accounts.google.com.evil.test/v3/signin/rejected?continue=https%3A%2F%2Fother.test');
+  for (const url of ['file:///secret', 'javascript:alert(1)', 'https://user:pass@example.com/', 'not a URL', 'http://example.com/']) {
+    assert.equal(systemBrowserAuthenticationUrl(url), '');
+    assert.equal(systemBrowserAuthenticationUrl('https://accounts.google.com/v3/signin/rejected?continue=' + encodeURIComponent(url)), '');
+  }
 });
 
 test('compatible user agent is case-insensitive and normalizes whitespace', () => {

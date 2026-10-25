@@ -33,7 +33,7 @@ test('resolveAddress honors the configured search engine', () => {
     resolveAddress('open source', searchUrlForEngine('duckduckgo')),
     'https://duckduckgo.com/?q=open%20source'
   );
-  // A real hostname is still treated as navigation, not search.
+
   assert.equal(resolveAddress('example.com', searchUrlForEngine('bing')), 'https://example.com');
 });
 

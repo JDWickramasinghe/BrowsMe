@@ -300,10 +300,6 @@ function effectiveFormSubmission(element) {
       const params = new URLSearchParams();
       let supported = true;
 
-      // Do not construct FormData here. FormData(form, submitter) dispatches the
-      // page-observable `formdata` event, so merely taking a snapshot could let
-      // a site mutate state or send a request. Instead, conservatively serialize
-      // only native successful controls whose URL-encoded value is predictable.
       const normalizeEntry = (value) => String(value ?? '')
         .replace(/\r\n|\r|\n/g, '\r\n');
       const appendEntry = (name, value) => {
@@ -399,9 +395,6 @@ function effectiveFormSubmission(element) {
           continue;
         }
 
-        // Form-associated custom elements and legacy plugin-backed controls can
-        // contribute entries that cannot be inspected without page-observable
-        // behavior. Their live request must therefore remain page-scoped.
         supported = false;
       }
 
@@ -427,7 +420,7 @@ function effectiveFormSubmission(element) {
       };
     }
   } catch {
-    // Unsupported form encodings and file-backed bodies stay page-scoped.
+
   }
   const fingerprint = JSON.stringify({
     form: {
@@ -748,7 +741,7 @@ function snapshotPage(args) {
         );
       }
     } catch {
-      // A closed or changing shadow tree remains opaque.
+
     }
   }
 
@@ -871,7 +864,7 @@ function snapshotPage(args) {
         }
       }
     } catch {
-      // A changing or hostile document should produce a partial snapshot, not fail the run.
+
     }
   }
 

@@ -35,7 +35,6 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
-// Agent work must not pause when another window briefly covers BrowsMe.
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.enableSandbox();
@@ -65,6 +64,7 @@ let ipcInstalled = false;
 let globalListenersInstalled = false;
 const pendingApprovals = new Map();
 const pendingPermissions = new Map();
+const pendingAuthentications = new Map();
 
 function securityHeaders(hostname) {
   const appPolicy = [
@@ -145,8 +145,7 @@ function send(channel, payload) {
 }
 
 function applyThemeSource(theme) {
-  // Drives prefers-color-scheme for every page (including the internal new tab)
-  // so the whole browser follows the chosen theme, not just the app chrome.
+
   nativeTheme.themeSource = ['light', 'dark'].includes(theme) ? theme : 'system';
 }
 
@@ -247,13 +246,22 @@ function requestPermission(payload) {
   return createDecisionRequest(pendingPermissions, 'permission:request', payload, 45000);
 }
 
+function requestAuthentication(payload) {
+
+  return createDecisionRequest(pendingAuthentications, 'authentication:request', payload, 300000);
+}
+
 function stopAgentAndPendingActions() {
   const stopped = agent?.stop() || false;
-  const hadPendingActions = pendingApprovals.size > 0;
+  const hadPendingActions = pendingApprovals.size > 0 || pendingAuthentications.size > 0;
   for (const pending of pendingApprovals.values()) {
     pending.resolve(false);
   }
   pendingApprovals.clear();
+  for (const pending of pendingAuthentications.values()) {
+    pending.resolve(false);
+  }
+  pendingAuthentications.clear();
   if (stopped || hadPendingActions) {
     send('ui:command', { command: 'cancel-agent-decisions' });
   }
@@ -276,6 +284,8 @@ function installIpcHandlers() {
     settings: settings.getPublicSettings(),
     downloads: browser.getDownloadsState(),
     memory: memory.getStatus(),
+    chats: memory.listSessions(),
+    activeChatMessages: memory.getSessionMessages(),
     platform: process.platform,
     windowMaximized: mainWindow.isMaximized()
   }));
@@ -432,8 +442,57 @@ function installIpcHandlers() {
   trustedHandle('agent:stop', () => stopAgentAndPendingActions());
   trustedHandle('agent:clear', () => {
     agent.clear();
+    emitBrowserState();
     return true;
   });
+
+  trustedHandle('chat:list', () => memory.listSessions());
+
+  trustedHandle('chat:messages', ({ id } = {}) =>
+    memory.getSessionMessages(id ? String(id) : undefined)
+  );
+
+  trustedHandle('chat:new', () => {
+    stopAgentAndPendingActions();
+    const session = memory.createSession();
+    agent.reloadActiveSession();
+    emitBrowserState();
+    return { session, sessions: memory.listSessions(), messages: [] };
+  });
+
+  trustedHandle('chat:switch', ({ id }) => {
+    stopAgentAndPendingActions();
+    memory.switchSession(String(id || ''));
+    agent.reloadActiveSession();
+    emitBrowserState();
+    return {
+      activeId: memory.getActiveSessionId(),
+      sessions: memory.listSessions(),
+      messages: memory.getSessionMessages()
+    };
+  });
+
+  trustedHandle('chat:rename', ({ id, title }) => {
+    memory.renameSession(String(id || ''), String(title || ''));
+    emitBrowserState();
+    return memory.listSessions();
+  });
+
+  trustedHandle('chat:delete', ({ id }) => {
+    stopAgentAndPendingActions();
+    memory.deleteSession(String(id || ''));
+    agent.reloadActiveSession();
+    emitBrowserState();
+    return {
+      activeId: memory.getActiveSessionId(),
+      sessions: memory.listSessions(),
+      messages: memory.getSessionMessages()
+    };
+  });
+
+  trustedHandle('chat:export', ({ id } = {}) =>
+    memory.exportSession(id ? String(id) : undefined)
+  );
 
   trustedHandle('approval:resolve', ({ id, allow }) => {
     const pending = pendingApprovals.get(String(id || ''));
@@ -452,6 +511,39 @@ function installIpcHandlers() {
     }
     pendingPermissions.delete(String(id));
     pending.resolve(Boolean(allow));
+    return true;
+  });
+
+  trustedHandle('authentication:resolve', ({ id, allow }) => {
+    const pending = pendingAuthentications.get(String(id || ''));
+    if (!pending) {
+      return false;
+    }
+    pendingAuthentications.delete(String(id));
+    pending.resolve(Boolean(allow));
+    return true;
+  });
+
+  trustedHandle('window:open-external', async ({ url, tabId }) => {
+    const target = tabId
+      ? browser.getSystemBrowserAuthenticationUrl(String(tabId))
+      : String(url || '');
+
+    let parsed;
+    try {
+      parsed = new URL(target);
+    } catch {
+      throw new Error('That address is invalid.');
+    }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      throw new Error('Only https addresses can be opened in your system browser.');
+    }
+    await require('electron').shell.openExternal(parsed.href);
+    return true;
+  });
+
+  trustedHandle('clipboard:write', ({ text }) => {
+    require('electron').clipboard.writeText(String(text || ''));
     return true;
   });
 
@@ -499,7 +591,7 @@ function zoomActiveTab(mode) {
   try {
     browser.setZoom(browser.activeTabId, mode);
   } catch {
-    // No active tab to zoom.
+
   }
 }
 
@@ -514,7 +606,7 @@ function cycleTab(direction) {
     const next = (current + direction + ids.length) % ids.length;
     browser.activateTab(ids[next]);
   } catch {
-    // No tabs available to cycle.
+
   }
 }
 
@@ -527,7 +619,7 @@ function activateTabByOrdinal(ordinal) {
     const index = ordinal >= 9 ? ids.length - 1 : Math.min(ordinal - 1, ids.length - 1);
     browser.activateTab(ids[index]);
   } catch {
-    // No tabs available to activate.
+
   }
 }
 
@@ -567,7 +659,7 @@ function handleShortcut(event, input) {
     try {
       browser.printTab(browser.activeTabId);
     } catch {
-      // No active tab to print.
+
     }
   } else if (accelerator && (key === '=' || key === '+' || key === 'add')) {
     event.preventDefault();
@@ -590,6 +682,9 @@ function handleShortcut(event, input) {
   } else if (accelerator && input.shift && key === 'b') {
     event.preventDefault();
     send('ui:command', { command: 'toggle-bookmarks-bar' });
+  } else if (accelerator && input.shift && key === 'o') {
+    event.preventDefault();
+    send('ui:command', { command: 'new-chat' });
   } else if (accelerator && key === 'tab') {
     event.preventDefault();
     cycleTab(input.shift ? -1 : 1);
@@ -661,6 +756,7 @@ async function createWindow() {
     emitToast: (payload) => send('ui:toast', payload),
     requestApproval,
     requestPermission,
+    requestAuthentication,
     emitDownloads: (payload) => send('downloads:state', payload),
     emitFind: (payload) => send('page:find-result', payload),
     getSearchUrl: () => searchUrlForEngine(settings.getSearchEngine()),
@@ -725,7 +821,7 @@ async function createWindow() {
         restoredActiveId = id;
       }
     } catch {
-      // Invalid or no-longer-supported URLs are skipped during restore.
+
     }
   }
   if (restoredIds.length) {

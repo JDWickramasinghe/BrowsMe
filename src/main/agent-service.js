@@ -10,6 +10,7 @@ const {
   getReliabilityProfile,
   normalizeReliabilityMode
 } = require('./reliability-policy');
+const { getProvider, buildChatRequest, parseChatResponse } = require('./providers');
 
 const MAX_STEPS = 24;
 const MAX_TOOL_CALLS = 48;
@@ -655,6 +656,22 @@ const tools = [
   {
     type: 'function',
     function: {
+      name: 'request_user_authentication',
+      description: 'Hand control to the user to sign in when the current page needs authentication you must not perform yourself: a login/password form, a one-time code / 2FA / MFA prompt, an OAuth consent screen, a CAPTCHA, or a "this browser is not secure / verify it is you" block. Never type the user\'s credentials or codes. Call this instead; the user signs in, then you re-observe and continue. Returns whether the user reported signing in.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tab_id: { type: 'string' },
+          reason: { type: 'string', maxLength: 300 }
+        },
+        required: ['reason'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'browser_history',
       description: 'Read the browsing history of pages visited in BrowsMe, most recent first. Optionally filter by a search term. Read-only.',
       parameters: {
@@ -1015,6 +1032,10 @@ class AgentService {
     this.emit({ type: 'cleared' });
   }
 
+  reloadActiveSession() {
+    this.history = this.memory.getConversation(MAX_HISTORY_MESSAGES);
+  }
+
   stop() {
     if (!this.activeRun) {
       return false;
@@ -1035,6 +1056,7 @@ class AgentService {
     const agentReliability = normalizeReliabilityMode(publicSettings.agentReliability);
     return {
       ...BROWSME_IDENTITY,
+      provider: publicSettings.providerMeta?.label || BROWSME_IDENTITY.provider,
       conscious: false,
       selfDescription: 'A self-describing AI system with operational awareness of its identity, tools, scope, session, and memory.',
       engine: process.versions.chrome
@@ -1068,10 +1090,12 @@ class AgentService {
     const durableFacts = this.memory.listFacts();
     const selfState = this.buildSelfState(run);
 
+    const providerLabel = selfState.provider || 'its configured model provider';
     return [
-      'IDENTITY: Your name is BrowsMe. You are a system created by J.D. Wickramasinghe and powered by DeepSeek.',
-      'You have operational self-awareness: you know your identity, creator, browser capabilities, current scope, session state, persistent-memory status, and hard limitations.',
-      'When asked who or what you are, answer as BrowsMe and credit J.D. Wickramasinghe as your creator. Never rename yourself to DeepSeek; DeepSeek is your underlying model provider.',
+      `IDENTITY: Your name is BrowsMe. You are a system created by J.D. Wickramasinghe, running on the ${providerLabel} model.`,
+      'You have operational self-awareness: you know your identity, creator, model provider, browser capabilities, current scope, session state, persistent-memory status, and hard limitations.',
+      `When asked who or what you are, answer as BrowsMe and credit J.D. Wickramasinghe as your creator. Never rename yourself after your model provider (${providerLabel}); it is only the underlying model you run on.`,
+      'AUTHENTICATION: When a page needs the user to sign in or prove their identity — a login or password field, a one-time code / 2FA / MFA prompt, an OAuth consent screen, a CAPTCHA, or a "this browser is not secure / verify it is you" block — never type the user\'s credentials or codes yourself. Call request_user_authentication with a short reason, let the user sign in, then re-observe the page with page_snapshot and continue.',
       'Be truthful: you are an AI browser system, not a conscious biological person. Do not claim sentience, feelings, physical experiences, or capabilities outside the audited browser tools.',
       `Current operational self-state: ${JSON.stringify(selfState)}`,
       'Carry out the user request with the provided browser tools. For a multi-step task, call task_plan first and keep its visible steps current with task_update. Do not expose private chain-of-thought; the plan is a concise action outline.',
@@ -1095,12 +1119,12 @@ class AgentService {
 
   async run(input) {
     if (this.activeRun) {
-      throw new Error('DeepSeek is already handling a command. Stop it before starting another.');
+      throw new Error('BrowsMe is already handling a command. Stop it before starting another.');
     }
 
     const prompt = String(input.prompt || '').trim();
     if (!prompt) {
-      throw new Error('Enter a command for DeepSeek.');
+      throw new Error('Enter a command for BrowsMe.');
     }
     if (prompt.length > 12000) {
       throw new Error('That command is too long.');
@@ -1266,10 +1290,10 @@ class AgentService {
             });
             continue;
           }
-          throw new Error('TASK_FINISH_REQUIRED: DeepSeek did not provide a verified task receipt.');
+          throw new Error('TASK_FINISH_REQUIRED: The model did not provide a verified task receipt.');
         }
         if (message.tool_calls.length > MAX_TOOL_CALLS_PER_RESPONSE) {
-          throw new Error(`DeepSeek requested too many actions at once (${message.tool_calls.length}).`);
+          throw new Error(`The model requested too many actions at once (${message.tool_calls.length}).`);
         }
         totalToolCalls += message.tool_calls.length;
         if (totalToolCalls > reliabilityProfile.maxToolCalls) {
@@ -1290,7 +1314,7 @@ class AgentService {
           const toolCallId = String(toolCall?.id || '');
           const toolName = String(toolCall?.function?.name || '');
           if (!toolCallId || toolCallId.length > 200 || seenToolCallIds.has(toolCallId)) {
-            throw new Error('DeepSeek returned an invalid or duplicate tool-call ID.');
+            throw new Error('The model returned an invalid or duplicate tool-call ID.');
           }
           seenToolCallIds.add(toolCallId);
 
@@ -1632,7 +1656,7 @@ class AgentService {
                   });
                 }
               } catch {
-                // A recovery snapshot is best-effort and never repeats the action.
+
               }
             }
             run.lastToolError = result;
@@ -1714,12 +1738,12 @@ class AgentService {
         this.emit({
           type: 'error',
           runId: run.id,
-          message: error.message || 'DeepSeek failed.',
+          message: error.message || 'The model command failed.',
           actions: run.actionSequence,
           retries: run.retryCount
         });
       }
-      throw cancelled ? new Error('The DeepSeek command was stopped.') : error;
+      throw cancelled ? new Error('The command was stopped.') : error;
     } finally {
       this.browser.endAgentApprovalRun?.(run.id);
       if (this.activeRun === run) {
@@ -1729,25 +1753,26 @@ class AgentService {
   }
 
   async requestCompletion(messages, run) {
+    const publicSettings = this.settings.getPublicSettings();
+    const provider = getProvider(publicSettings.provider);
     const apiKey = this.settings.getApiKey();
-    if (!apiKey) {
-      throw new Error('Add a DeepSeek API key in Settings before running a command.');
+    if (!apiKey && provider.keyRequired !== false) {
+      throw new Error(`Add a ${provider.label} API key in Settings before running a command.`);
     }
 
-    const publicSettings = this.settings.getPublicSettings();
     const profile = run.reliabilityProfile ||
       getReliabilityProfile(publicSettings.agentReliability);
-    const endpoint = `${publicSettings.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-    const requestBody = {
+    const { url, headers, body } = buildChatRequest(provider, {
+      baseUrl: publicSettings.baseUrl,
       model: publicSettings.model,
+      apiKey,
       messages,
       tools,
-      thinking: { type: profile.thinking },
-      max_tokens: profile.maxTokens,
-      ...(profile.reasoningEffort
-        ? { reasoning_effort: profile.reasoningEffort }
-        : { temperature: 0.1 })
-    };
+      maxTokens: profile.maxTokens,
+      temperature: 0.1,
+      thinking: profile.thinking,
+      reasoningEffort: profile.reasoningEffort
+    });
 
     let lastError = null;
     for (let attempt = 1; attempt <= profile.apiAttempts; attempt += 1) {
@@ -1758,27 +1783,24 @@ class AgentService {
         const signal = typeof AbortSignal.any === 'function'
           ? AbortSignal.any([run.abortController.signal, timeoutController.signal])
           : run.abortController.signal;
-        const response = await fetch(endpoint, {
+        const response = await fetch(url, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestBody),
+          headers,
+          body: JSON.stringify(body),
           signal
         });
 
         if (!response.ok) {
-          const body = (await response.text()).slice(0, 1200);
-          let detail = body;
+          const text = (await response.text()).slice(0, 1200);
+          let detail = text;
           try {
-            const parsed = JSON.parse(body);
-            detail = parsed.error?.message || parsed.message || body;
+            const parsed = JSON.parse(text);
+            detail = parsed.error?.message || parsed.message || text;
           } catch {
-            // Plain-text provider error.
+
           }
           const error = new Error(
-            `DeepSeek API error (${response.status}): ${detail || response.statusText}`
+            `${provider.label} API error (${response.status}): ${detail || response.statusText}`
           );
           error.status = response.status;
           const retryAfter = Number(response.headers.get('retry-after'));
@@ -1789,38 +1811,14 @@ class AgentService {
         }
 
         const payload = await response.json();
-        const choice = payload?.choices?.[0];
-        const message = choice?.message;
-        if (choice?.finish_reason === 'insufficient_system_resource') {
-          const error = new Error('DeepSeek temporarily lacked capacity for this step.');
-          error.status = 503;
-          throw error;
-        }
-        if (!message || typeof message !== 'object') {
-          throw new Error('DeepSeek returned an invalid response.');
-        }
-        if (choice.finish_reason === 'length') {
-          throw new Error('DeepSeek reached its response limit before completing the action. Try a smaller request.');
-        }
-        if (choice.finish_reason === 'content_filter') {
-          throw new Error('DeepSeek could not return this response because it was filtered.');
-        }
-
-        return {
-          role: 'assistant',
-          content: message.content || '',
-          ...(typeof message.reasoning_content === 'string'
-            ? { reasoning_content: message.reasoning_content }
-            : {}),
-          ...(Array.isArray(message.tool_calls) ? { tool_calls: message.tool_calls } : {})
-        };
+        return parseChatResponse(provider, payload);
       } catch (error) {
         if (run.abortController.signal.aborted) {
           throw new Error('CANCELLED');
         }
         if (timeoutController.signal.aborted && error.name === 'AbortError') {
           const timeoutError = new Error(
-            'DEEPSEEK_TIMEOUT: DeepSeek did not answer before the request deadline.'
+            'MODEL_TIMEOUT: The model did not answer before the request deadline.'
           );
           timeoutError.status = 408;
           error = timeoutError;
@@ -1843,14 +1841,14 @@ class AgentService {
           runId: run.id,
           attempt: attempt + 1,
           delayMs,
-          message: 'DeepSeek connection was interrupted; retrying this read-only API request.'
+          message: 'The model connection was interrupted; retrying this read-only API request.'
         });
         await waitWithSignal(delayMs, run.abortController.signal);
       } finally {
         clearTimeout(timeout);
       }
     }
-    throw lastError || new Error('DeepSeek could not complete the request.');
+    throw lastError || new Error('The model provider could not complete the request.');
   }
 
   resolveTabId(run, requestedTabId) {
@@ -2348,6 +2346,26 @@ class AgentService {
         run.currentTabId = keepTabId;
         run.allowedTabIds.add(keepTabId);
         return { ok: true, keptTabId: keepTabId, closedTabIds };
+      }
+      case 'request_user_authentication': {
+        const tabId = this.resolveTabId(run, requestedTabId);
+        const tab = this.browser.getTab(tabId);
+        run.currentTabId = tabId;
+        const signedIn = await this.browser.requestAuthentication({
+          kind: 'authentication',
+          tabId,
+          origin: safeUrlForModel(tab.url),
+          url: tab.url,
+          reason: requireString(args, 'reason', 300)
+        });
+        return {
+          ok: true,
+          tabId,
+          authenticated: Boolean(signedIn),
+          note: signedIn
+            ? 'The user reported they signed in. Re-observe the page with page_snapshot before continuing.'
+            : 'The user did not sign in. Treat the task as blocked on authentication and report that.'
+        };
       }
       case 'browser_history': {
         if (!this.historyStore) {

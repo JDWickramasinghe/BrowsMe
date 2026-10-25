@@ -16,8 +16,10 @@ const {
   RELIABILITY_MODES,
   normalizeReliabilityMode
 } = require('./reliability-policy');
+const { PROVIDERS, PROVIDER_VALUES, getProvider } = require('./providers');
 
 const DEFAULTS = Object.freeze({
+  provider: 'deepseek',
   model: 'deepseek-v4-flash',
   baseUrl: 'https://api.deepseek.com',
   rememberApiKey: true,
@@ -59,6 +61,7 @@ class SettingsStore {
         ...value,
         approvalMode: normalizeApprovalMode(value.approvalMode),
         agentReliability: normalizeReliabilityMode(value.agentReliability),
+        provider: PROVIDER_VALUES.has(value.provider) ? value.provider : 'deepseek',
         searchEngine: SEARCH_ENGINE_VALUES.has(value.searchEngine) ? value.searchEngine : 'google',
         startupMode: STARTUP_MODE_VALUES.has(value.startupMode) ? value.startupMode : 'restore',
         bookmarksBarOpen: value.bookmarksBarOpen === true,
@@ -78,11 +81,21 @@ class SettingsStore {
   }
 
   getApiKey() {
+    if (process.env.BROWSME_API_KEY) {
+      return process.env.BROWSME_API_KEY;
+    }
     if (process.env.DEEPSEEK_API_KEY) {
       return process.env.DEEPSEEK_API_KEY;
     }
 
     return this.getLocalApiKey();
+  }
+
+  getProvider() {
+    if (PROVIDER_VALUES.has(process.env.BROWSME_PROVIDER)) {
+      return process.env.BROWSME_PROVIDER;
+    }
+    return PROVIDER_VALUES.has(this.data.provider) ? this.data.provider : 'deepseek';
   }
 
   getLocalApiKey() {
@@ -103,9 +116,26 @@ class SettingsStore {
 
   getPublicSettings() {
     const apiKey = this.getApiKey();
+    const provider = this.getProvider();
+    const providerConfig = getProvider(provider);
     return {
-      model: process.env.DEEPSEEK_MODEL || this.data.model,
-      baseUrl: process.env.DEEPSEEK_BASE_URL || this.data.baseUrl,
+      provider,
+      providerMeta: {
+        label: providerConfig.label,
+        local: Boolean(providerConfig.local),
+        keyRequired: providerConfig.keyRequired !== false
+      },
+      providerCatalog: Object.fromEntries(
+        Object.entries(PROVIDERS).map(([id, config]) => [id, {
+          label: config.label,
+          baseUrl: config.baseUrl,
+          defaultModel: config.defaultModel,
+          local: Boolean(config.local),
+          keyRequired: config.keyRequired !== false
+        }])
+      ),
+      model: process.env.BROWSME_MODEL || process.env.DEEPSEEK_MODEL || this.data.model,
+      baseUrl: process.env.BROWSME_BASE_URL || process.env.DEEPSEEK_BASE_URL || this.data.baseUrl,
       rememberApiKey: Boolean(this.data.rememberApiKey),
       apiKeyConfigured: Boolean(apiKey),
       apiKeyHint: apiKey ? `••••${apiKey.slice(-4)}` : '',
@@ -138,9 +168,14 @@ class SettingsStore {
       this.data.approvalMode = input.approvalMode;
     }
 
+    if (PROVIDER_VALUES.has(input.provider)) {
+      this.data.provider = input.provider;
+    }
+
     if (typeof input.model === 'string') {
       const model = input.model.trim();
-      if (!/^[a-zA-Z0-9._-]{1,80}$/.test(model)) {
+
+      if (!/^[\w.:/@-]{1,120}$/.test(model)) {
         throw new Error('The model name is invalid.');
       }
       this.data.model = model;

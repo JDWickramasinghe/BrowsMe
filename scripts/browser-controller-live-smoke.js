@@ -256,7 +256,7 @@ async function waitForFixture(controller, tabId) {
         return snapshot;
       }
     } catch {
-      // The initial execution context may not exist yet.
+
     }
     await new Promise((resolve) => setTimeout(resolve, 80));
   }
@@ -591,7 +591,7 @@ async function main() {
     try {
       hostname = new URL(rawUrl).hostname;
     } catch {
-      // Delegate malformed URLs to the production implementation.
+
     }
     if (hostname === 'browsme-rebind.test') {
       rebindResolutionChecks += 1;

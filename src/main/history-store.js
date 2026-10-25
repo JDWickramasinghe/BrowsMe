@@ -52,7 +52,7 @@ class HistoryStore {
     }
     const top = this.entries[0];
     if (top && top.url === entry.url && entry.at - top.at < 60000) {
-      // A reload or late title update for the same page: refresh in place.
+
       if (visit.title) {
         top.title = entry.title;
       }
@@ -114,7 +114,7 @@ class HistoryStore {
         { mode: 0o600, validateExisting: parseHistory }
       );
     } catch {
-      // Browsing history persistence is best-effort and non-fatal.
+
     }
   }
 }

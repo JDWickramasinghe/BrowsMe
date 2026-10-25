@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { safeStorage } = require('electron');
 const {
   atomicWriteFileSync,
@@ -9,21 +10,62 @@ const {
   readRecoverableFileSync
 } = require('./atomic-store');
 
+const MAX_MESSAGES_PER_SESSION = 120;
+const MAX_SESSIONS = 200;
+const MAX_FACTS = 100;
+
 const EMPTY_MEMORY = Object.freeze({
-  version: 1,
-  conversation: [],
+  version: 2,
+  activeSessionId: '',
+  sessions: [],
   facts: []
 });
+
+function deriveTitle(conversation) {
+  const firstUser = (conversation || []).find((entry) => entry && entry.role === 'user');
+  const text = String(firstUser?.content || '').trim().replace(/\s+/g, ' ');
+  return (text ? text.slice(0, 60) : 'New chat') || 'New chat';
+}
+
+function normalizeSession(session) {
+  const conversation = Array.isArray(session?.conversation)
+    ? session.conversation
+      .filter((e) => e && (e.role === 'user' || e.role === 'assistant') && typeof e.content === 'string')
+      .slice(-MAX_MESSAGES_PER_SESSION)
+    : [];
+  const createdAt = session?.createdAt || new Date().toISOString();
+  return {
+    id: typeof session?.id === 'string' && session.id ? session.id : crypto.randomUUID(),
+    title: String(session?.title || deriveTitle(conversation)).slice(0, 120) || 'New chat',
+    createdAt,
+    updatedAt: session?.updatedAt || createdAt,
+    conversation
+  };
+}
 
 function normalizeMemory(parsed) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('AI memory data must be an object.');
   }
-  return {
-    version: 1,
-    conversation: Array.isArray(parsed.conversation) ? parsed.conversation.slice(-120) : [],
-    facts: Array.isArray(parsed.facts) ? parsed.facts.slice(-100) : []
-  };
+  const facts = Array.isArray(parsed.facts) ? parsed.facts.slice(-MAX_FACTS) : [];
+  let sessions;
+  if (Array.isArray(parsed.sessions)) {
+    sessions = parsed.sessions.slice(-MAX_SESSIONS).map(normalizeSession);
+  } else if (Array.isArray(parsed.conversation) && parsed.conversation.length) {
+
+    sessions = [normalizeSession({
+      title: deriveTitle(parsed.conversation),
+      conversation: parsed.conversation,
+      createdAt: parsed.conversation[0]?.timestamp
+    })];
+  } else {
+    sessions = [];
+  }
+  let activeSessionId = typeof parsed.activeSessionId === 'string' ? parsed.activeSessionId : '';
+  if (!sessions.some((s) => s.id === activeSessionId)) {
+    activeSessionId = sessions[0]?.id || '';
+  }
+  return { version: 2, activeSessionId, sessions, facts };
 }
 
 function decodeMemory(raw) {
@@ -60,7 +102,7 @@ function migrateLegacyBackup(filePath) {
       });
     }
   } catch {
-    // Missing, corrupt, or temporarily inaccessible backups stay untouched.
+
   }
 }
 
@@ -69,11 +111,12 @@ class MemoryStore {
     this.filePath = path.join(userDataPath, 'ai-memory.dat');
     this.loadedPlaintext = false;
     this.data = this.read();
+    this.ensureActiveSession();
     if (this.loadedPlaintext && safeStorage.isEncryptionAvailable()) {
       try {
         this.persist();
       } catch {
-        // A later successful write can complete the migration.
+
       }
     } else if (safeStorage.isEncryptionAvailable()) {
       migrateLegacyBackup(this.filePath);
@@ -90,13 +133,11 @@ class MemoryStore {
           return decoded.data;
         },
         {
-          // Encrypted backups can safely repair the primary immediately.
-          // Legacy plaintext is migrated by persist() after the read succeeds.
           repairPrimary: (raw) => raw.subarray(0, 4).toString('utf8') === 'BME1'
         }
       );
     } catch {
-      return { ...EMPTY_MEMORY, conversation: [], facts: [] };
+      return { version: 2, activeSessionId: '', sessions: [], facts: [] };
     }
   }
 
@@ -113,33 +154,138 @@ class MemoryStore {
     return true;
   }
 
-  getConversation(limit = 20) {
-    return this.data.conversation.slice(-Math.max(1, Math.min(60, limit))).map((entry) => ({
+  ensureActiveSession() {
+    if (!this.data.sessions.length) {
+      const session = normalizeSession({ title: 'New chat' });
+      this.data.sessions.push(session);
+      this.data.activeSessionId = session.id;
+      return session;
+    }
+    if (!this.data.sessions.some((s) => s.id === this.data.activeSessionId)) {
+      this.data.activeSessionId = this.data.sessions[0].id;
+    }
+    return this.data.sessions.find((s) => s.id === this.data.activeSessionId);
+  }
+
+  activeSession() {
+    return this.ensureActiveSession();
+  }
+
+  getActiveSessionId() {
+    return this.ensureActiveSession().id;
+  }
+
+  listSessions() {
+    return this.data.sessions
+      .map((s) => ({
+        id: s.id,
+        title: s.title,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        messageCount: s.conversation.length,
+        active: s.id === this.data.activeSessionId
+      }))
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  }
+
+  createSession(title) {
+    const session = normalizeSession({ title: title || 'New chat' });
+    this.data.sessions.push(session);
+    this.data.sessions = this.data.sessions.slice(-MAX_SESSIONS);
+    this.data.activeSessionId = session.id;
+    this.persist();
+    return { id: session.id, title: session.title };
+  }
+
+  switchSession(id) {
+    if (this.data.sessions.some((s) => s.id === id)) {
+      this.data.activeSessionId = id;
+      this.persist();
+    }
+    return this.getActiveSessionId();
+  }
+
+  renameSession(id, title) {
+    const session = this.data.sessions.find((s) => s.id === id);
+    if (!session) {
+      return false;
+    }
+    session.title = String(title || '').trim().slice(0, 120) || session.title;
+    session.updatedAt = new Date().toISOString();
+    this.persist();
+    return true;
+  }
+
+  deleteSession(id) {
+    const before = this.data.sessions.length;
+    this.data.sessions = this.data.sessions.filter((s) => s.id !== id);
+    if (this.data.sessions.length === before) {
+      return false;
+    }
+    if (this.data.activeSessionId === id) {
+      this.data.activeSessionId = this.data.sessions[0]?.id || '';
+    }
+    this.ensureActiveSession();
+    this.persist();
+    return true;
+  }
+
+  getSessionMessages(id) {
+    const session = id
+      ? this.data.sessions.find((s) => s.id === id)
+      : this.activeSession();
+    if (!session) {
+      return [];
+    }
+    return session.conversation.map((entry) => ({
       role: entry.role,
-      content: entry.content
+      content: entry.content,
+      timestamp: entry.timestamp || session.updatedAt
     }));
   }
 
+  exportSession(id) {
+    const session = id
+      ? this.data.sessions.find((s) => s.id === id)
+      : this.activeSession();
+    if (!session) {
+      return '';
+    }
+    const lines = [`# ${session.title}`, '', `_Exported ${new Date().toISOString()}_`, ''];
+    for (const entry of session.conversation) {
+      lines.push(entry.role === 'user' ? '**You**' : '**BrowsMe**', '', entry.content, '');
+    }
+    return lines.join('\n');
+  }
+
+  getConversation(limit = 20) {
+    const session = this.activeSession();
+    return session.conversation
+      .slice(-Math.max(1, Math.min(60, limit)))
+      .map((entry) => ({ role: entry.role, content: entry.content }));
+  }
+
   appendConversation(userContent, assistantContent) {
+    const session = this.ensureActiveSession();
     const timestamp = new Date().toISOString();
-    this.data.conversation.push(
-      {
-        role: 'user',
-        content: String(userContent || '').slice(0, 12000),
-        timestamp
-      },
-      {
-        role: 'assistant',
-        content: String(assistantContent || '').slice(0, 12000),
-        timestamp
-      }
+    const user = String(userContent || '').slice(0, 12000);
+    session.conversation.push(
+      { role: 'user', content: user, timestamp },
+      { role: 'assistant', content: String(assistantContent || '').slice(0, 12000), timestamp }
     );
-    this.data.conversation = this.data.conversation.slice(-120);
+    session.conversation = session.conversation.slice(-MAX_MESSAGES_PER_SESSION);
+    session.updatedAt = timestamp;
+
+    if ((!session.title || session.title === 'New chat') && user.trim()) {
+      session.title = user.trim().replace(/\s+/g, ' ').slice(0, 60);
+    }
     this.persist();
   }
 
   clearConversation() {
-    this.data.conversation = [];
+    const session = this.activeSession();
+    session.conversation = [];
+    session.updatedAt = new Date().toISOString();
     this.persist();
   }
 
@@ -166,7 +312,7 @@ class MemoryStore {
         updatedAt: new Date().toISOString()
       });
     }
-    this.data.facts = this.data.facts.slice(-100);
+    this.data.facts = this.data.facts.slice(-MAX_FACTS);
     this.persist();
     return { key: normalizedKey, value: normalizedValue };
   }
@@ -183,9 +329,12 @@ class MemoryStore {
   }
 
   getStatus() {
+    const session = this.activeSession();
     return {
-      conversationMessages: this.data.conversation.length,
+      conversationMessages: session.conversation.length,
       rememberedFacts: this.data.facts.length,
+      sessionCount: this.data.sessions.length,
+      activeSessionId: this.data.activeSessionId,
       encrypted: safeStorage.isEncryptionAvailable(),
       persistent: safeStorage.isEncryptionAvailable()
     };
