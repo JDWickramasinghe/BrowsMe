@@ -160,6 +160,80 @@ class CdpBrowserEngine extends EventEmitter {
     return result && result.result ? result.result.value : undefined;
   }
 
+  // --- Agent-facing automation over the connected page ---
+
+  // Tags visible interactive controls with data-browsme-ref and returns them plus
+  // the page's visible text. Content is untrusted data, never instructions.
+  async snapshot() {
+    if (!this.client) throw new Error('ENGINE_NOT_RUNNING');
+    return this.evaluate(`(() => {
+      const selector = 'a[href],button,input,select,textarea,[role="button"],[role="link"],[role="textbox"],[role="checkbox"],[contenteditable="true"],[tabindex]';
+      const nodes = Array.from(document.querySelectorAll(selector));
+      const elements = [];
+      let ref = 0;
+      for (const el of nodes) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 1 || rect.height <= 1 || el.offsetParent === null) continue;
+        ref += 1;
+        el.setAttribute('data-browsme-ref', String(ref));
+        const label = (el.getAttribute('aria-label') || el.getAttribute('placeholder') || (el.innerText || '').trim() || el.value || el.name || el.getAttribute('title') || '').replace(/\\s+/g, ' ').trim().slice(0, 140);
+        elements.push({ ref: String(ref), role: el.getAttribute('role') || el.tagName.toLowerCase(), name: label, value: String(el.value || '').slice(0, 140) });
+        if (ref >= 200) break;
+      }
+      const text = (document.body ? document.body.innerText : '').replace(/\\n{3,}/g, '\\n\\n').slice(0, 6000);
+      return { url: location.href, title: document.title, elements, text };
+    })()`);
+  }
+
+  async clickRef(ref) {
+    if (!this.client) throw new Error('ENGINE_NOT_RUNNING');
+    const index = parseInt(ref, 10);
+    if (!Number.isFinite(index)) throw new Error('INVALID_REF');
+    const point = await this.evaluate(`(() => {
+      const el = document.querySelector('[data-browsme-ref="${index}"]');
+      if (!el) return null;
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), ok: r.width > 0 && r.height > 0 };
+    })()`);
+    if (!point || !point.ok) throw new Error('REF_NOT_FOUND');
+    await this.dispatchMouse({ type: 'mouseMoved', x: point.x, y: point.y, button: 'none' });
+    await this.dispatchMouse({ type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+    await this.dispatchMouse({ type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+    return { ok: true, x: point.x, y: point.y };
+  }
+
+  async typeRef(ref, text, { clear = true } = {}) {
+    if (!this.client) throw new Error('ENGINE_NOT_RUNNING');
+    const index = parseInt(ref, 10);
+    if (!Number.isFinite(index)) throw new Error('INVALID_REF');
+    const focused = await this.evaluate(`(() => {
+      const el = document.querySelector('[data-browsme-ref="${index}"]');
+      if (!el) return false;
+      el.focus();
+      if (${clear ? 'true' : 'false'} && typeof el.select === 'function') el.select();
+      return document.activeElement === el;
+    })()`);
+    if (!focused) throw new Error('REF_NOT_FOUND');
+    await this.insertText(String(text));
+    return { ok: true };
+  }
+
+  async pressKey(keyName) {
+    if (!this.client) throw new Error('ENGINE_NOT_RUNNING');
+    const named = {
+      Enter: 13, Tab: 9, Backspace: 8, Delete: 46, Escape: 27,
+      ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
+      Home: 36, End: 35, PageUp: 33, PageDown: 34
+    };
+    const key = String(keyName);
+    const code = named[key] || 0;
+    const base = { key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code };
+    await this.dispatchKey({ type: 'keyDown', ...base, text: key === 'Enter' ? '\r' : undefined });
+    await this.dispatchKey({ type: 'keyUp', ...base });
+    return { ok: true };
+  }
+
   async stop() {
     this.running = false;
     try {

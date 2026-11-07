@@ -88,6 +88,33 @@ class ConnectedBrowser {
     if (this.engine) await this.engine.navigate(url);
   }
 
+  _requireEngine() {
+    if (!this.engine || !this.engine.running) {
+      throw new Error('CONNECTED_BROWSER_NOT_RUNNING');
+    }
+    return this.engine;
+  }
+
+  async status() {
+    return { running: this.isRunning(), url: this.engine ? this.engine.lastUrl : '' };
+  }
+
+  async snapshot() {
+    return this._requireEngine().snapshot();
+  }
+
+  async clickRef(ref) {
+    return this._requireEngine().clickRef(ref);
+  }
+
+  async typeRef(ref, text, options) {
+    return this._requireEngine().typeRef(ref, text, options);
+  }
+
+  async pressKey(key) {
+    return this._requireEngine().pressKey(key);
+  }
+
   async input(payload = {}) {
     if (!this.engine) return;
     const { kind } = payload;
