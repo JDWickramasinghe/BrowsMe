@@ -205,7 +205,7 @@ function reportViewport() {
     const rect = ui.pageViewport.getBoundingClientRect();
     const obscured = !ui.settingsOverlay.hidden || !ui.decisionOverlay.hidden ||
       !ui.downloadsPopover.hidden || !ui.historyOverlay.hidden || !ui.readingPopover.hidden ||
-      !ui.chatsPopover.hidden;
+      !ui.chatsPopover.hidden || state.connectedActive === true;
     const findInset = state.findOpen ? FIND_BAR_HEIGHT : 0;
     window.browsme.setViewportBounds(obscured
       ? {
@@ -2273,5 +2273,198 @@ async function initialize() {
     showToast(`BrowsMe could not initialize: ${error.message}`, 'danger');
   }
 }
+
+// --- Connected browser (CDP real-Chrome view mirrored via screencast) ---
+(function setupConnectedBrowser() {
+  const canvas = document.getElementById('connected-canvas');
+  const toggle = document.getElementById('connected-toggle');
+  if (!canvas || !toggle || !window.browsme.connectedStart) {
+    return;
+  }
+  const ctx = canvas.getContext('2d');
+  const frameImage = new Image();
+  let painting = false;
+  let queuedData = null;
+
+  function paint(data) {
+    queuedData = data;
+    if (painting) {
+      return;
+    }
+    const next = queuedData;
+    queuedData = null;
+    painting = true;
+    frameImage.onload = () => {
+      if (canvas.width !== frameImage.naturalWidth) canvas.width = frameImage.naturalWidth;
+      if (canvas.height !== frameImage.naturalHeight) canvas.height = frameImage.naturalHeight;
+      ctx.drawImage(frameImage, 0, 0);
+      painting = false;
+      if (queuedData) {
+        const pending = queuedData;
+        queuedData = null;
+        paint(pending);
+      }
+    };
+    frameImage.onerror = () => { painting = false; };
+    frameImage.src = `data:image/jpeg;base64,${next}`;
+  }
+
+  function currentViewport() {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      width: Math.max(1, Math.round(rect.width)),
+      height: Math.max(1, Math.round(rect.height)),
+      deviceScaleFactor: window.devicePixelRatio || 1
+    };
+  }
+
+  function toPageCoords(event) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.round(event.clientX - rect.left)),
+      y: Math.max(0, Math.round(event.clientY - rect.top))
+    };
+  }
+
+  const BUTTONS = { 0: 'left', 1: 'middle', 2: 'right' };
+  function modifiers(event) {
+    return (event.altKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) |
+      (event.metaKey ? 4 : 0) | (event.shiftKey ? 8 : 0);
+  }
+
+  function sendMouse(type, event) {
+    const { x, y } = toPageCoords(event);
+    window.browsme.connectedInput({
+      kind: 'mouse',
+      event: {
+        type,
+        x,
+        y,
+        button: type === 'mouseMoved' ? 'none' : (BUTTONS[event.button] || 'left'),
+        buttons: event.buttons,
+        clickCount: (type === 'mousePressed' || type === 'mouseReleased') ? (event.detail || 1) : 0,
+        modifiers: modifiers(event)
+      }
+    });
+  }
+
+  let lastMove = 0;
+  canvas.addEventListener('mousedown', (event) => {
+    canvas.focus();
+    event.preventDefault();
+    sendMouse('mousePressed', event);
+  });
+  canvas.addEventListener('mouseup', (event) => {
+    event.preventDefault();
+    sendMouse('mouseReleased', event);
+  });
+  canvas.addEventListener('mousemove', (event) => {
+    const now = performance.now();
+    if (now - lastMove < 16) return;
+    lastMove = now;
+    sendMouse('mouseMoved', event);
+  });
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  canvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    const { x, y } = toPageCoords(event);
+    window.browsme.connectedInput({
+      kind: 'mouse',
+      event: { type: 'mouseWheel', x, y, deltaX: -event.deltaX, deltaY: -event.deltaY, modifiers: modifiers(event) }
+    });
+  }, { passive: false });
+
+  const VIRTUAL_KEYS = {
+    Enter: 13, Backspace: 8, Tab: 9, Delete: 46, Escape: 27,
+    ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
+    Home: 36, End: 35, PageUp: 33, PageDown: 34
+  };
+  canvas.addEventListener('keydown', (event) => {
+    if (state.connectedActive !== true) return;
+    event.preventDefault();
+    const printable = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (printable) {
+      window.browsme.connectedInput({ kind: 'text', text: event.key });
+      return;
+    }
+    const code = VIRTUAL_KEYS[event.key] || 0;
+    for (const type of ['keyDown', 'keyUp']) {
+      window.browsme.connectedInput({
+        kind: 'key',
+        event: {
+          type,
+          key: event.key,
+          code: event.code,
+          windowsVirtualKeyCode: code,
+          nativeVirtualKeyCode: code,
+          modifiers: modifiers(event)
+        }
+      });
+    }
+  });
+
+  function showConnected(active) {
+    state.connectedActive = active;
+    canvas.hidden = !active;
+    toggle.classList.toggle('is-active', active);
+    toggle.setAttribute('aria-pressed', String(active));
+    if (!active && ctx && canvas.width) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    reportViewport();
+  }
+
+  async function start() {
+    showConnected(true);
+    try {
+      await window.browsme.connectedStart({
+        viewport: currentViewport(),
+        startUrl: 'https://accounts.google.com'
+      });
+      canvas.focus();
+      showToast('Connected browser opening — sign in to Google in this view.');
+    } catch (error) {
+      showConnected(false);
+      showToast(`Could not open the connected browser: ${error.message}`, 'danger');
+    }
+  }
+
+  async function stop() {
+    showConnected(false);
+    try {
+      await window.browsme.connectedStop();
+    } catch {
+      // already stopped
+    }
+  }
+
+  window.browsme.onConnectedFrame((payload) => {
+    if (state.connectedActive !== true || !payload || !payload.data) return;
+    paint(payload.data);
+  });
+  window.browsme.onConnectedState((payload) => {
+    if (payload && payload.running === false && state.connectedActive) {
+      showConnected(false);
+      showToast('Connected browser closed.');
+    }
+  });
+
+  toggle.addEventListener('click', () => {
+    if (state.connectedActive === true) {
+      void stop();
+    } else {
+      void start();
+    }
+  });
+
+  let resizeTimer = 0;
+  window.addEventListener('resize', () => {
+    if (state.connectedActive !== true) return;
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => {
+      window.browsme.connectedResize(currentViewport());
+    }, 150);
+  });
+})();
 
 void initialize();

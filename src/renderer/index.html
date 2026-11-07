@@ -96,6 +96,9 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>
               <span>Stop AI</span>
             </button>
+            <button id="connected-toggle" class="icon-button" type="button" aria-label="Connected browser" title="Connected browser — sign in to Google in a real Chrome">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3c2.6 2.8 2.6 15.2 0 18M12 3c-2.6 2.8-2.6 15.2 0 18"></path></svg>
+            </button>
             <button id="downloads-button" class="icon-button badge-host" type="button" aria-label="Downloads" title="Downloads (Ctrl+J)">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"></path></svg>
               <span id="download-badge" class="toolbar-badge" hidden></span>
@@ -141,6 +144,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
             </button>
           </div>
+          <canvas id="connected-canvas" class="connected-canvas" tabindex="0" hidden aria-label="Connected browser"></canvas>
         </section>
 
         <div id="panel-splitter" class="panel-splitter" role="separator" aria-label="Resize AI terminal" aria-orientation="vertical" tabindex="0"></div>
