@@ -493,7 +493,51 @@ function renderBrowser(nextState) {
   ui.maximizeButton.innerHTML = maximizeSvg;
 }
 
-function appendMessage(role, content) {
+let activeTypeTimer = null;
+let activeTyping = null;
+
+function prefersReducedMotion() {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+// If a bubble is mid-type, snap it to its full text (e.g. when a new message arrives).
+function finishActiveTyping() {
+  if (activeTypeTimer) {
+    clearTimeout(activeTypeTimer);
+    activeTypeTimer = null;
+  }
+  if (activeTyping) {
+    activeTyping.el.textContent = activeTyping.full;
+    activeTyping = null;
+  }
+}
+
+// Reveal text progressively so it looks like the AI is typing its reply.
+function typeIntoBubble(el, text) {
+  activeTyping = { el, full: text };
+  el.textContent = '';
+  const perTick = Math.max(1, Math.round(text.length / 150));
+  let shown = 0;
+  const step = () => {
+    shown = Math.min(text.length, shown + perTick);
+    el.textContent = text.slice(0, shown);
+    scrollTerminal();
+    if (shown < text.length) {
+      activeTypeTimer = setTimeout(step, 16);
+    } else {
+      activeTypeTimer = null;
+      activeTyping = null;
+    }
+  };
+  step();
+}
+
+function appendMessage(role, content, options = {}) {
+  finishActiveTyping();
   const row = document.createElement('article');
   row.className = `message ${role}`;
 
@@ -521,7 +565,12 @@ function appendMessage(role, content) {
 
   const message = document.createElement('div');
   message.className = 'message-content';
-  message.textContent = String(content || '');
+  const fullText = String(content || '');
+  if (options.animate && role === 'ai' && !prefersReducedMotion()) {
+    typeIntoBubble(message, fullText);
+  } else {
+    message.textContent = fullText;
+  }
   body.append(meta, message);
   row.append(avatar, body);
   ui.terminalLog.append(row);
@@ -971,10 +1020,12 @@ function onAgentEvent(event) {
       break;
     case 'complete':
       removeThinking();
-      appendMessage('ai', event.content);
-      appendSystemNote(
-        `${event.status === 'succeeded' ? 'Verified complete' : event.status === 'partial' ? 'Partially complete' : 'Blocked'} · ${event.actions || 0} browser action${event.actions === 1 ? '' : 's'} · ${event.retries || 0} connection retr${event.retries === 1 ? 'y' : 'ies'}`
-      );
+      appendMessage('ai', event.content, { animate: true });
+      if ((event.actions || 0) > 0 || (event.retries || 0) > 0 || event.status !== 'succeeded') {
+        appendSystemNote(
+          `${event.status === 'succeeded' ? 'Verified complete' : event.status === 'partial' ? 'Partially complete' : 'Blocked'} · ${event.actions || 0} browser action${event.actions === 1 ? '' : 's'} · ${event.retries || 0} connection retr${event.retries === 1 ? 'y' : 'ies'}`
+        );
+      }
       setAgentRunning(false, event.status === 'succeeded' ? 'Verified' : 'Finished');
       setAgentPhase('complete');
       retireRun(state.currentRunId);
@@ -1002,7 +1053,7 @@ function onAgentEvent(event) {
       break;
     case 'error':
       removeThinking();
-      appendMessage('ai', event.message || 'BrowsMe could not complete the command.');
+      appendMessage('ai', event.message || 'BrowsMe could not complete the command.', { animate: true });
       appendSystemNote(
         `Failed receipt · ${event.actions || 0} browser action${event.actions === 1 ? '' : 's'} · ${event.retries || 0} connection retr${event.retries === 1 ? 'y' : 'ies'}`
       );

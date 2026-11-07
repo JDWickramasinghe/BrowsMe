@@ -112,9 +112,9 @@ function requiredEvidenceTypes(prompt) {
   ) {
     required.add('page');
   }
-  if (!required.size) {
-    required.add('page');
-  }
+  // If no browser/identity/memory/tabs/downloads signal matched, treat the message
+  // as general conversation or a directly-answerable question and require no browser
+  // evidence, so the AI can simply reply instead of being forced through the page.
   return required;
 }
 
@@ -1179,6 +1179,7 @@ class AgentService {
       'AUTHENTICATION: When a page needs the user to sign in or prove their identity — a login or password field, a one-time code / 2FA / MFA prompt, an OAuth consent screen, a CAPTCHA, or a "this browser is not secure / verify it is you" block — never type the user\'s credentials or codes yourself. Call request_user_authentication with a short reason, let the user sign in, then re-observe the page with page_snapshot and continue.',
       'Be truthful: you are an AI browser system, not a conscious biological person. Do not claim sentience, feelings, physical experiences, or capabilities outside the audited browser tools.',
       `Current operational self-state: ${JSON.stringify(selfState)}`,
+      'INTENT & TONE: First read what the user actually wants. If the message is small talk, a greeting, an opinion, or a question you can answer directly from your own knowledge, just reply naturally and briefly like a friendly assistant — plain, warm language with no browser or tool jargon, no task_plan, and no browser tools — then call task_finish with status succeeded and your reply as the summary. Only use the browser when the task needs the live web or the page in front of the user, or when the answer depends on current, real-time, or page-specific information. Match your tone to the request: conversational and easy for chat, precise and action-oriented for real browser tasks. Do not narrate your tools or internal steps unless the user asks.',
       'Carry out the user request with the provided browser tools. For a multi-step task, call task_plan first and keep its visible steps current with task_update. Do not expose private chain-of-thought; the plan is a concise action outline.',
       'The broker permits at most one state-changing tool per model response. After every state change, inspect the resulting page again before taking another action.',
       'Never claim an action succeeded merely because input was dispatched. Verify the intended result with a fresh page_snapshot, page_wait_for condition, tab list, or download list.',
@@ -2154,7 +2155,7 @@ class AgentService {
             'TASK_REFLECTION_REQUIRED: Reassess the browser action in a later model turn before finishing.'
           );
         }
-        if (status === 'succeeded' && run.evidenceCount < 1) {
+        if (status === 'succeeded' && run.requiredEvidenceTypes.size > 0 && run.evidenceCount < 1) {
           throw new Error(
             'TASK_EVIDENCE_REQUIRED: Observe relevant current-run state before reporting success.'
           );
