@@ -118,24 +118,6 @@ function requiredEvidenceTypes(prompt) {
   return required;
 }
 
-// Anything that looks like a browser action disqualifies the chat fast-path.
-const CONVERSATIONAL_DISQUALIFIERS = /\b(open|close|click|type|fill|submit|select|check|uncheck|scroll|navigate|go ?to|visit|search|look ?up|find|summar|extract|download|tabs?|bookmark|reading list|refresh|reload|screenshot|price|buy|checkout|order|log ?in|sign ?in|sign ?up|email|gmail|inbox|calendar|website|site|page|url|https?:|www\.|remember|forget|memory)\b/i;
-// A positive small-talk / direct-chat signal.
-const CONVERSATIONAL_SIGNAL = /(\b(hi+|hey+|hello+|yo|sup|hiya|howdy|greetings|good (morning|afternoon|evening|night)|how (are|r) (you|u|ya)|how'?s it going|how are things|what'?s up|thank you|thanks|thanx|thx|ty|cheers|appreciate it|nice|cool|great|awesome|amazing|lol|lmao|rofl|haha+|hehe|bye|goodbye|see ya|later|gm|gn|who are you|what are you|what can you do|introduce yourself|tell me about yourself|tell me a joke|what do you think|you (ok|good|there|alive))\b)|^\s*(ok(ay)?|k|cool|nice|great|awesome|thanks?|thank you|ty|yes|yep|no|nope|sure|hmm+|lol|haha+|wow|bruh)[\s.!?]*$/i;
-
-// True when the message is small talk or a greeting we should just answer directly,
-// bypassing the browser tool loop entirely.
-function isConversational(prompt) {
-  const text = String(prompt || '').trim();
-  if (!text || text.length > 240) {
-    return false;
-  }
-  if (CONVERSATIONAL_DISQUALIFIERS.test(text)) {
-    return false;
-  }
-  return CONVERSATIONAL_SIGNAL.test(text);
-}
-
 const tools = [
   {
     type: 'function',
@@ -1259,7 +1241,7 @@ class AgentService {
       evidenceCount: 0,
       evidenceTypes: new Set(),
       requiredEvidenceTypes: requiredEvidenceTypes(prompt),
-      conversational: isConversational(prompt),
+      conversational: false,
       lastFailureStep: 0,
       pendingVerification: new Map(),
       lastToolError: null,
@@ -1271,6 +1253,9 @@ class AgentService {
       cancelled: false
     };
     this.activeRun = run;
+    if (!run.cancelled) {
+      run.conversational = await this.classifyIntent(run);
+    }
     this.browser.beginAgentApprovalRun?.(run.id, allowedTabIds);
     this.emit({
       type: 'started',
@@ -1858,6 +1843,30 @@ class AgentService {
     }
   }
 
+  // Lets the model itself decide whether the message needs the browser or is just
+  // conversation — one tiny, tool-free completion that answers BROWSER or CHAT.
+  async classifyIntent(run) {
+    const system = [
+      'You are an intent router for an AI web browser assistant.',
+      'Decide whether answering the user message needs the browser — searching the web, opening or navigating pages, reading or acting on the current page, downloads, tabs, bookmarks, or anything that depends on live or page-specific information — OR whether it is small talk, a greeting, chit-chat, or a question you can answer directly from general knowledge.',
+      'Reply with exactly one word: BROWSER or CHAT.'
+    ].join(' ');
+    try {
+      const reply = await this.requestCompletion(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: run.userPrompt }
+        ],
+        run,
+        { tools: [], maxTokens: 3, temperature: 0 }
+      );
+      return /\bchat\b/i.test(String(reply?.content || ''));
+    } catch {
+      // On any failure, fall back to the full browser-capable path.
+      return false;
+    }
+  }
+
   // A single, tool-free completion for small talk. No task loop, no snapshots,
   // no receipts — just a warm, plain-language reply.
   async respondConversationally(run) {
@@ -1899,8 +1908,8 @@ class AgentService {
       apiKey,
       messages,
       tools: options.tools !== undefined ? options.tools : tools,
-      maxTokens: profile.maxTokens,
-      temperature: 0.1,
+      maxTokens: options.maxTokens != null ? options.maxTokens : profile.maxTokens,
+      temperature: options.temperature != null ? options.temperature : 0.1,
       thinking: profile.thinking,
       reasoningEffort: profile.reasoningEffort
     });
@@ -2745,7 +2754,6 @@ module.exports = {
   MAX_STEPS,
   parseToolArguments,
   requiredEvidenceTypes,
-  isConversational,
   safeUrlForModel,
   serializeToolResult,
   summarizeArguments,
