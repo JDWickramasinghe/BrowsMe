@@ -118,6 +118,24 @@ function requiredEvidenceTypes(prompt) {
   return required;
 }
 
+// Anything that looks like a browser action disqualifies the chat fast-path.
+const CONVERSATIONAL_DISQUALIFIERS = /\b(open|close|click|type|fill|submit|select|check|uncheck|scroll|navigate|go ?to|visit|search|look ?up|find|summar|extract|download|tabs?|bookmark|reading list|refresh|reload|screenshot|price|buy|checkout|order|log ?in|sign ?in|sign ?up|email|gmail|inbox|calendar|website|site|page|url|https?:|www\.|remember|forget|memory)\b/i;
+// A positive small-talk / direct-chat signal.
+const CONVERSATIONAL_SIGNAL = /(\b(hi+|hey+|hello+|yo|sup|hiya|howdy|greetings|good (morning|afternoon|evening|night)|how (are|r) (you|u|ya)|how'?s it going|how are things|what'?s up|thank you|thanks|thanx|thx|ty|cheers|appreciate it|nice|cool|great|awesome|amazing|lol|lmao|rofl|haha+|hehe|bye|goodbye|see ya|later|gm|gn|who are you|what are you|what can you do|introduce yourself|tell me about yourself|tell me a joke|what do you think|you (ok|good|there|alive))\b)|^\s*(ok(ay)?|k|cool|nice|great|awesome|thanks?|thank you|ty|yes|yep|no|nope|sure|hmm+|lol|haha+|wow|bruh)[\s.!?]*$/i;
+
+// True when the message is small talk or a greeting we should just answer directly,
+// bypassing the browser tool loop entirely.
+function isConversational(prompt) {
+  const text = String(prompt || '').trim();
+  if (!text || text.length > 240) {
+    return false;
+  }
+  if (CONVERSATIONAL_DISQUALIFIERS.test(text)) {
+    return false;
+  }
+  return CONVERSATIONAL_SIGNAL.test(text);
+}
+
 const tools = [
   {
     type: 'function',
@@ -1241,6 +1259,7 @@ class AgentService {
       evidenceCount: 0,
       evidenceTypes: new Set(),
       requiredEvidenceTypes: requiredEvidenceTypes(prompt),
+      conversational: isConversational(prompt),
       lastFailureStep: 0,
       pendingVerification: new Map(),
       lastToolError: null,
@@ -1258,6 +1277,7 @@ class AgentService {
       runId: run.id,
       prompt,
       scope,
+      conversational: run.conversational,
       reliability: reliabilityMode
     });
     const confirmVerification = (verificationKey, observationTool, step) => {
@@ -1347,7 +1367,11 @@ class AgentService {
       let finalStatus = 'succeeded';
       let totalToolCalls = 0;
       const seenToolCallIds = new Set();
-      for (let step = 1; step <= reliabilityProfile.maxSteps; step += 1) {
+      if (run.conversational) {
+        this.emit({ type: 'thinking', runId: run.id, step: 1 });
+        finalText = (await this.respondConversationally(run)) || 'Hey! What would you like to do?';
+      }
+      for (let step = 1; !run.conversational && step <= reliabilityProfile.maxSteps; step += 1) {
         if (run.cancelled) {
           throw new Error('CANCELLED');
         }
@@ -1834,7 +1858,32 @@ class AgentService {
     }
   }
 
-  async requestCompletion(messages, run) {
+  // A single, tool-free completion for small talk. No task loop, no snapshots,
+  // no receipts — just a warm, plain-language reply.
+  async respondConversationally(run) {
+    const selfState = this.buildSelfState(run);
+    const providerLabel = selfState.provider || 'its model provider';
+    const system = [
+      `You are BrowsMe, a warm, friendly AI assistant created by J.D. Wickramasinghe, running on the ${providerLabel} model. You live inside a web browser and can control it when asked, but right now you are simply chatting.`,
+      'Reply naturally and conversationally in plain language, like a helpful friend. Keep it short — usually one or two sentences — unless the user clearly wants more.',
+      'Never mention tools, snapshots, tabs, sessions, verification, receipts, memory, or any internal machinery, and never describe steps you took. Just answer.',
+      'If asked who or what you are, say you are BrowsMe, created by J.D. Wickramasinghe; never call yourself by the underlying model name. Be truthful: you are an AI, not a person.',
+      'If the user later wants something on the web or on a page, you can offer to help, but take no browser action now.'
+    ].join('\n');
+    const history = this.history.slice(-MAX_HISTORY_MESSAGES).map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: String(message.content || '')
+    }));
+    const messages = [
+      { role: 'system', content: system },
+      ...history,
+      { role: 'user', content: run.userPrompt }
+    ];
+    const reply = await this.requestCompletion(messages, run, { tools: [] });
+    return String(reply?.content || '').trim();
+  }
+
+  async requestCompletion(messages, run, options = {}) {
     const publicSettings = this.settings.getPublicSettings();
     const provider = getProvider(publicSettings.provider);
     const apiKey = this.settings.getApiKey();
@@ -1849,7 +1898,7 @@ class AgentService {
       model: publicSettings.model,
       apiKey,
       messages,
-      tools,
+      tools: options.tools !== undefined ? options.tools : tools,
       maxTokens: profile.maxTokens,
       temperature: 0.1,
       thinking: profile.thinking,
@@ -2696,6 +2745,7 @@ module.exports = {
   MAX_STEPS,
   parseToolArguments,
   requiredEvidenceTypes,
+  isConversational,
   safeUrlForModel,
   serializeToolResult,
   summarizeArguments,

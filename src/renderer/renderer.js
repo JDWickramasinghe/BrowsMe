@@ -970,11 +970,13 @@ function onAgentEvent(event) {
       state.currentReliability = event.reliability || 'reliable';
       currentPlanCard = null;
       currentPlanRunId = null;
-      setAgentRunning(true, 'Understanding');
+      setAgentRunning(true, event.conversational ? 'Replying' : 'Understanding');
       setAgentPhase('understanding');
-      appendSystemNote(
-        `Task started · ${state.currentReliability === 'maximum' ? 'Maximum accuracy' : state.currentReliability === 'fast' ? 'Fast' : 'Reliable'}`
-      );
+      if (!event.conversational) {
+        appendSystemNote(
+          `Task started · ${state.currentReliability === 'maximum' ? 'Maximum accuracy' : state.currentReliability === 'fast' ? 'Fast' : 'Reliable'}`
+        );
+      }
       break;
     case 'thinking':
       showThinking(event.step);
