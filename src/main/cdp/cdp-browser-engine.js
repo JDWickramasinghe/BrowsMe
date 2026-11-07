@@ -216,7 +216,28 @@ class CdpBrowserEngine extends EventEmitter {
       return document.activeElement === el;
     })()`);
     if (!focused) throw new Error('REF_NOT_FOUND');
-    await this.insertText(String(text));
+    await this.typeText(String(text));
+    return { ok: true };
+  }
+
+  // Types text one character at a time with real key events, so it looks like the
+  // AI is actually typing into the field (fires keydown/keypress/input/keyup and
+  // updates the value progressively) rather than pasting the whole string at once.
+  async typeText(text, options = {}) {
+    if (!this.client) throw new Error('ENGINE_NOT_RUNNING');
+    const chars = Array.from(String(text));
+    const delayMs = options.delayMs != null ? options.delayMs : (chars.length > 60 ? 12 : 45);
+    for (const ch of chars) {
+      if (ch === '\n' || ch === '\r') {
+        await this.pressKey('Enter');
+      } else {
+        await this.dispatchKey({ type: 'keyDown', text: ch, unmodifiedText: ch, key: ch });
+        await this.dispatchKey({ type: 'keyUp', key: ch });
+      }
+      if (delayMs) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
     return { ok: true };
   }
 
