@@ -48,9 +48,9 @@ The terminal’s Clear button empties the current chat but keeps explicitly reme
 
 ## Run it
 
-Requirements: Node.js 22.12 or newer and npm.
+Requirements: Node.js 22.12 or newer and npm. BrowsMe runs on Windows, macOS, and Linux (it is built on Electron/Chromium).
 
-```powershell
+```bash
 npm install
 npm start
 ```
@@ -107,11 +107,23 @@ $env:DEEPSEEK_MODEL = "deepseek-v4-flash"
 npm start
 ```
 
-Build Windows installer and portable artifacts with:
+## Packaging
 
-```powershell
+Build installable artifacts for the **current** operating system with:
+
+```bash
 npm run dist
 ```
+
+Or target a specific platform explicitly:
+
+```bash
+npm run dist:win     # NSIS installer + portable .exe
+npm run dist:mac     # .dmg + .zip
+npm run dist:linux   # AppImage + .deb
+```
+
+Electron-builder can only produce a given platform's packages on that platform (or a compatible one): Windows installers build on Windows, `.dmg`/`.zip` build on macOS (code signing/notarization require macOS), and Linux `AppImage`/`.deb` build on Linux (or macOS). Icons for every platform are generated automatically from `build/icon.png` (1024×1024); Windows additionally uses `build/icon.ico`.
 
 ## Code signing (Windows SmartScreen / Defender trust)
 

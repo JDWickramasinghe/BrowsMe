@@ -205,7 +205,7 @@ function reportViewport() {
     const rect = ui.pageViewport.getBoundingClientRect();
     const obscured = !ui.settingsOverlay.hidden || !ui.decisionOverlay.hidden ||
       !ui.downloadsPopover.hidden || !ui.historyOverlay.hidden || !ui.readingPopover.hidden ||
-      !ui.chatsPopover.hidden;
+      !ui.chatsPopover.hidden || state.connectedActive === true;
     const findInset = state.findOpen ? FIND_BAR_HEIGHT : 0;
     window.browsme.setViewportBounds(obscured
       ? {
@@ -493,7 +493,49 @@ function renderBrowser(nextState) {
   ui.maximizeButton.innerHTML = maximizeSvg;
 }
 
-function appendMessage(role, content) {
+let activeTypeTimer = null;
+let activeTyping = null;
+
+function prefersReducedMotion() {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+function finishActiveTyping() {
+  if (activeTypeTimer) {
+    clearTimeout(activeTypeTimer);
+    activeTypeTimer = null;
+  }
+  if (activeTyping) {
+    activeTyping.el.textContent = activeTyping.full;
+    activeTyping = null;
+  }
+}
+
+function typeIntoBubble(el, text) {
+  activeTyping = { el, full: text };
+  el.textContent = '';
+  const perTick = Math.max(1, Math.round(text.length / 150));
+  let shown = 0;
+  const step = () => {
+    shown = Math.min(text.length, shown + perTick);
+    el.textContent = text.slice(0, shown);
+    scrollTerminal();
+    if (shown < text.length) {
+      activeTypeTimer = setTimeout(step, 16);
+    } else {
+      activeTypeTimer = null;
+      activeTyping = null;
+    }
+  };
+  step();
+}
+
+function appendMessage(role, content, options = {}) {
+  finishActiveTyping();
   const row = document.createElement('article');
   row.className = `message ${role}`;
 
@@ -521,7 +563,12 @@ function appendMessage(role, content) {
 
   const message = document.createElement('div');
   message.className = 'message-content';
-  message.textContent = String(content || '');
+  const fullText = String(content || '');
+  if (options.animate && role === 'ai' && !prefersReducedMotion()) {
+    typeIntoBubble(message, fullText);
+  } else {
+    message.textContent = fullText;
+  }
   body.append(meta, message);
   row.append(avatar, body);
   ui.terminalLog.append(row);
@@ -921,11 +968,13 @@ function onAgentEvent(event) {
       state.currentReliability = event.reliability || 'reliable';
       currentPlanCard = null;
       currentPlanRunId = null;
-      setAgentRunning(true, 'Understanding');
+      setAgentRunning(true, event.conversational ? 'Replying' : 'Understanding');
       setAgentPhase('understanding');
-      appendSystemNote(
-        `Task started · ${state.currentReliability === 'maximum' ? 'Maximum accuracy' : state.currentReliability === 'fast' ? 'Fast' : 'Reliable'}`
-      );
+      if (!event.conversational) {
+        appendSystemNote(
+          `Task started · ${state.currentReliability === 'maximum' ? 'Maximum accuracy' : state.currentReliability === 'fast' ? 'Fast' : 'Reliable'}`
+        );
+      }
       break;
     case 'thinking':
       showThinking(event.step);
@@ -971,10 +1020,12 @@ function onAgentEvent(event) {
       break;
     case 'complete':
       removeThinking();
-      appendMessage('ai', event.content);
-      appendSystemNote(
-        `${event.status === 'succeeded' ? 'Verified complete' : event.status === 'partial' ? 'Partially complete' : 'Blocked'} · ${event.actions || 0} browser action${event.actions === 1 ? '' : 's'} · ${event.retries || 0} connection retr${event.retries === 1 ? 'y' : 'ies'}`
-      );
+      appendMessage('ai', event.content, { animate: true });
+      if ((event.actions || 0) > 0 || (event.retries || 0) > 0 || event.status !== 'succeeded') {
+        appendSystemNote(
+          `${event.status === 'succeeded' ? 'Verified complete' : event.status === 'partial' ? 'Partially complete' : 'Blocked'} · ${event.actions || 0} browser action${event.actions === 1 ? '' : 's'} · ${event.retries || 0} connection retr${event.retries === 1 ? 'y' : 'ies'}`
+        );
+      }
       setAgentRunning(false, event.status === 'succeeded' ? 'Verified' : 'Finished');
       setAgentPhase('complete');
       retireRun(state.currentRunId);
@@ -1002,7 +1053,7 @@ function onAgentEvent(event) {
       break;
     case 'error':
       removeThinking();
-      appendMessage('ai', event.message || 'BrowsMe could not complete the command.');
+      appendMessage('ai', event.message || 'BrowsMe could not complete the command.', { animate: true });
       appendSystemNote(
         `Failed receipt · ${event.actions || 0} browser action${event.actions === 1 ? '' : 's'} · ${event.retries || 0} connection retr${event.retries === 1 ? 'y' : 'ies'}`
       );
@@ -2273,5 +2324,219 @@ async function initialize() {
     showToast(`BrowsMe could not initialize: ${error.message}`, 'danger');
   }
 }
+
+(function setupConnectedBrowser() {
+  const canvas = document.getElementById('connected-canvas');
+  const toggle = document.getElementById('connected-toggle');
+  if (!canvas || !toggle || !window.browsme.connectedStart) {
+    return;
+  }
+  const ctx = canvas.getContext('2d');
+  const frameImage = new Image();
+  let painting = false;
+  let queuedData = null;
+
+  function paint(data) {
+    queuedData = data;
+    if (painting) {
+      return;
+    }
+    const next = queuedData;
+    queuedData = null;
+    painting = true;
+    frameImage.onload = () => {
+      if (canvas.width !== frameImage.naturalWidth) canvas.width = frameImage.naturalWidth;
+      if (canvas.height !== frameImage.naturalHeight) canvas.height = frameImage.naturalHeight;
+      ctx.drawImage(frameImage, 0, 0);
+      painting = false;
+      if (queuedData) {
+        const pending = queuedData;
+        queuedData = null;
+        paint(pending);
+      }
+    };
+    frameImage.onerror = () => { painting = false; };
+    frameImage.src = `data:image/jpeg;base64,${next}`;
+  }
+
+  function currentViewport() {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      width: Math.max(1, Math.round(rect.width)),
+      height: Math.max(1, Math.round(rect.height)),
+      deviceScaleFactor: window.devicePixelRatio || 1
+    };
+  }
+
+  function toPageCoords(event) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.round(event.clientX - rect.left)),
+      y: Math.max(0, Math.round(event.clientY - rect.top))
+    };
+  }
+
+  const BUTTONS = { 0: 'left', 1: 'middle', 2: 'right' };
+  function modifiers(event) {
+    return (event.altKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) |
+      (event.metaKey ? 4 : 0) | (event.shiftKey ? 8 : 0);
+  }
+
+  function sendMouse(type, event) {
+    const { x, y } = toPageCoords(event);
+    window.browsme.connectedInput({
+      kind: 'mouse',
+      event: {
+        type,
+        x,
+        y,
+        button: type === 'mouseMoved' ? 'none' : (BUTTONS[event.button] || 'left'),
+        buttons: event.buttons,
+        clickCount: (type === 'mousePressed' || type === 'mouseReleased') ? (event.detail || 1) : 0,
+        modifiers: modifiers(event)
+      }
+    });
+  }
+
+  let lastMove = 0;
+  canvas.addEventListener('mousedown', (event) => {
+    canvas.focus();
+    event.preventDefault();
+    sendMouse('mousePressed', event);
+  });
+  canvas.addEventListener('mouseup', (event) => {
+    event.preventDefault();
+    sendMouse('mouseReleased', event);
+  });
+  canvas.addEventListener('mousemove', (event) => {
+    const now = performance.now();
+    if (now - lastMove < 16) return;
+    lastMove = now;
+    sendMouse('mouseMoved', event);
+  });
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  canvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    const { x, y } = toPageCoords(event);
+    window.browsme.connectedInput({
+      kind: 'mouse',
+      event: { type: 'mouseWheel', x, y, deltaX: -event.deltaX, deltaY: -event.deltaY, modifiers: modifiers(event) }
+    });
+  }, { passive: false });
+
+  const VIRTUAL_KEYS = {
+    Enter: 13, Backspace: 8, Tab: 9, Delete: 46, Escape: 27,
+    ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
+    Home: 36, End: 35, PageUp: 33, PageDown: 34
+  };
+  canvas.addEventListener('keydown', (event) => {
+    if (state.connectedActive !== true) return;
+    event.preventDefault();
+    const printable = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (printable) {
+      window.browsme.connectedInput({ kind: 'text', text: event.key });
+      return;
+    }
+    const code = VIRTUAL_KEYS[event.key] || 0;
+    for (const type of ['keyDown', 'keyUp']) {
+      window.browsme.connectedInput({
+        kind: 'key',
+        event: {
+          type,
+          key: event.key,
+          code: event.code,
+          windowsVirtualKeyCode: code,
+          nativeVirtualKeyCode: code,
+          modifiers: modifiers(event)
+        }
+      });
+    }
+  });
+
+  function showConnected(active) {
+    state.connectedActive = active;
+    canvas.hidden = !active;
+    toggle.classList.toggle('is-active', active);
+    toggle.setAttribute('aria-pressed', String(active));
+    if (!active && ctx && canvas.width) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    reportViewport();
+  }
+
+  async function start() {
+    showConnected(true);
+    try {
+      let result = await window.browsme.connectedStart({
+        viewport: currentViewport(),
+        startUrl: 'https://accounts.google.com'
+      });
+      if (result && result.needsBrowser) {
+        const ok = window.confirm(
+          'No Chromium browser was found on this computer. Download Google Chrome for Testing (about 150 MB, one time) so BrowsMe can open the connected browser?'
+        );
+        if (!ok) {
+          showConnected(false);
+          return;
+        }
+        showToast('Downloading Chrome for Testing… this happens once.');
+        await window.browsme.connectedEnsureBrowser();
+        result = await window.browsme.connectedStart({
+          viewport: currentViewport(),
+          startUrl: 'https://accounts.google.com'
+        });
+      }
+      canvas.focus();
+      showToast('Connected browser opening — sign in to Google in this view.');
+    } catch (error) {
+      showConnected(false);
+      showToast(`Could not open the connected browser: ${error.message}`, 'danger');
+    }
+  }
+
+  async function stop() {
+    showConnected(false);
+    try {
+      await window.browsme.connectedStop();
+    } catch {
+    }
+  }
+
+  window.browsme.onConnectedFrame((payload) => {
+    if (state.connectedActive !== true || !payload || !payload.data) return;
+    paint(payload.data);
+  });
+  window.browsme.onConnectedState((payload) => {
+    if (payload && payload.running === false && state.connectedActive) {
+      showConnected(false);
+      showToast('Connected browser closed.');
+    }
+  });
+  let lastDownloadPercent = -1;
+  window.browsme.onConnectedDownloadProgress((payload) => {
+    if (!payload || typeof payload.percent !== 'number') return;
+    if (payload.percent >= lastDownloadPercent + 10 || payload.percent >= 100) {
+      lastDownloadPercent = payload.percent;
+      showToast(`Downloading Chrome for Testing… ${payload.percent}%`);
+    }
+  });
+
+  toggle.addEventListener('click', () => {
+    if (state.connectedActive === true) {
+      void stop();
+    } else {
+      void start();
+    }
+  });
+
+  let resizeTimer = 0;
+  window.addEventListener('resize', () => {
+    if (state.connectedActive !== true) return;
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => {
+      window.browsme.connectedResize(currentViewport());
+    }, 150);
+  });
+})();
 
 void initialize();

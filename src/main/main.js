@@ -22,6 +22,7 @@ const { MemoryStore } = require('./memory-store');
 const { SettingsStore } = require('./settings-store');
 const { HistoryStore } = require('./history-store');
 const { searchUrlForEngine } = require('./url-utils');
+const { ConnectedBrowser } = require('./cdp/connected-browser');
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -278,7 +279,10 @@ function installGlobalListeners() {
   });
 }
 
+let connectedBrowser = null;
+
 function installIpcHandlers() {
+  connectedBrowser = new ConnectedBrowser({ send });
   trustedHandle('browser:get-initial-state', () => ({
     browser: browser.getState(),
     settings: settings.getPublicSettings(),
@@ -303,6 +307,34 @@ function installIpcHandlers() {
       height: Math.min(content.height, Math.max(1, Number(bounds.height) || 1))
     });
   });
+
+  trustedHandle('connected:list-browsers', () => ({
+    browsers: connectedBrowser ? connectedBrowser.listBrowsers() : []
+  }));
+
+  trustedHandle('connected:start', (input = {}) => {
+    const viewport = input.viewport && typeof input.viewport === 'object' ? input.viewport : undefined;
+    const startUrl = typeof input.startUrl === 'string' && input.startUrl.length <= 4000
+      ? input.startUrl
+      : 'https://accounts.google.com';
+    return connectedBrowser.start({ viewport, startUrl });
+  });
+
+  trustedHandle('connected:stop', () => (connectedBrowser ? connectedBrowser.stop() : { running: false }));
+
+  trustedHandle('connected:navigate', ({ url } = {}) => {
+    if (typeof url !== 'string' || url.length > 4000) {
+      throw new Error('The address is invalid.');
+    }
+    return connectedBrowser?.navigate(url);
+  });
+
+  trustedHandle('connected:input', (input = {}) => connectedBrowser?.input(input));
+
+  trustedHandle('connected:resize', (input = {}) => connectedBrowser?.resize(input || {}));
+
+  trustedHandle('connected:ensure-browser', () =>
+    connectedBrowser.ensureBrowser((progress) => send('connected:download-progress', progress)));
 
   trustedHandle('browser:navigate', ({ tabId, url }) => {
     if (typeof url !== 'string' || url.length > 4000) {
@@ -728,7 +760,12 @@ async function createWindow() {
     frame: false,
     backgroundColor: '#eef1f6',
     title: 'BrowsMe',
-    icon: path.join(__dirname, '..', 'assets', 'icon.ico'),
+    icon: path.join(
+      __dirname,
+      '..',
+      'assets',
+      process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+    ),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       nodeIntegration: false,
@@ -771,7 +808,8 @@ async function createWindow() {
     settings,
     memory,
     history,
-    emit: (payload) => send('agent:event', payload)
+    emit: (payload) => send('agent:event', payload),
+    getConnected: () => connectedBrowser
   });
 
   if (!ipcInstalled) {
@@ -876,6 +914,7 @@ app.on('before-quit', async () => {
   pendingApprovals.clear();
   pendingPermissions.clear();
   await browser?.destroy();
+  await connectedBrowser?.stop();
 });
 
 app.on('window-all-closed', () => {

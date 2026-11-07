@@ -62,8 +62,16 @@ function clientHintPlatform() {
   return 'Windows';
 }
 
+function clientHintArchitecture() {
+  if (process.arch === 'arm64' || process.arch === 'arm') {
+    return { arch: 'arm', bitness: process.arch === 'arm64' ? '64' : '32' };
+  }
+  return { arch: 'x86', bitness: process.arch === 'ia32' ? '32' : '64' };
+}
+
 function buildClientHints() {
   const { full, major } = chromiumVersions();
+  const { arch, bitness } = clientHintArchitecture();
   return {
 
     low: {
@@ -75,8 +83,8 @@ function buildClientHints() {
     high: {
       'sec-ch-ua-full-version-list': `"Chromium";v="${full}", "Not.A/Brand";v="99.0.0.0"`,
       'sec-ch-ua-full-version': `"${full}"`,
-      'sec-ch-ua-bitness': '"64"',
-      'sec-ch-ua-arch': '"x86"',
+      'sec-ch-ua-bitness': `"${bitness}"`,
+      'sec-ch-ua-arch': `"${arch}"`,
       'sec-ch-ua-wow64': '?0',
       'sec-ch-ua-model': '""'
     }

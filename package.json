@@ -1,6 +1,6 @@
 {
   "name": "browsme",
-  "version": "0.3.0",
+  "version": "0.8.0",
   "description": "BrowsMe, an AI-assisted Chromium browser created by J.D. Wickramasinghe and powered by DeepSeek.",
   "main": "src/main/main.js",
   "author": "Sobersided",
@@ -16,7 +16,10 @@
     "test:forms": "electron scripts/form-controls-live-smoke.js",
     "test:auth": "electron scripts/authentication-live-smoke.js",
     "check": "node scripts/check.js",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
   "devDependencies": {
     "electron": "^43.2.0",
@@ -61,6 +64,28 @@
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "darkModeSupport": true,
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "dmg": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Network",
+      "maintainer": "Sobersided",
+      "synopsis": "AI-assisted Chromium browser",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     }
   }
 }
