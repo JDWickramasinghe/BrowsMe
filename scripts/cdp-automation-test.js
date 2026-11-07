@@ -1,9 +1,5 @@
 'use strict';
 
-// Headless exercise of the agent-facing automation on CdpBrowserEngine:
-// snapshot (ref tagging), typeRef, clickRef, pressKey.
-// Run: node scripts/cdp-automation-test.js
-
 const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert');
@@ -51,7 +47,6 @@ async function main() {
     try {
       require('node:fs').rmSync(profileDir, { recursive: true, force: true });
     } catch {
-      // ignore
     }
   }
 }

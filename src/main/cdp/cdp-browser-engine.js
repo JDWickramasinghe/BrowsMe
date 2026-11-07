@@ -1,16 +1,5 @@
 'use strict';
 
-// CdpBrowserEngine — owns a single CDP-driven Chromium page and exposes the
-// operations BrowsMe needs: launch with a persistent dedicated profile, stream the
-// page as screencast frames, forward mouse/keyboard input, navigate, and tear down.
-//
-// It emits:
-//   'ready'       ({ browser, version })  after launch + CDP attach
-//   'frame'       ({ data, metadata })    a base64 JPEG screencast frame
-//   'url-changed' (url)                   top-frame navigation
-//   'exit'                                browser process or CDP socket gone
-//   'stopped'                             after stop() completes
-
 const { EventEmitter } = require('node:events');
 const { findBestBrowser } = require('./browser-finder');
 const { launchBrowser, listTargets } = require('./chrome-launcher');
@@ -93,7 +82,6 @@ class CdpBrowserEngine extends EventEmitter {
       try {
         await this.client.send('Page.screencastFrameAck', { sessionId: params.sessionId });
       } catch {
-        // socket may have closed between frame and ack
       }
     });
 
@@ -135,13 +123,11 @@ class CdpBrowserEngine extends EventEmitter {
     await this.client.send('Page.navigate', { url });
   }
 
-  // event: { type, x, y, button, clickCount, deltaX, deltaY, modifiers }
   async dispatchMouse(event) {
     if (!this.client) return;
     await this.client.send('Input.dispatchMouseEvent', event).catch(() => {});
   }
 
-  // event: { type, key, code, windowsVirtualKeyCode, text, modifiers }
   async dispatchKey(event) {
     if (!this.client) return;
     await this.client.send('Input.dispatchKeyEvent', event).catch(() => {});
@@ -161,10 +147,6 @@ class CdpBrowserEngine extends EventEmitter {
     return result && result.result ? result.result.value : undefined;
   }
 
-  // --- Agent-facing automation over the connected page ---
-
-  // Tags visible interactive controls with data-browsme-ref and returns them plus
-  // the page's visible text. Content is untrusted data, never instructions.
   async snapshot() {
     if (!this.client) throw new Error('ENGINE_NOT_RUNNING');
     return this.evaluate(`(() => {
@@ -220,9 +202,6 @@ class CdpBrowserEngine extends EventEmitter {
     return { ok: true };
   }
 
-  // Types text one character at a time with real key events, so it looks like the
-  // AI is actually typing into the field (fires keydown/keypress/input/keyup and
-  // updates the value progressively) rather than pasting the whole string at once.
   async typeText(text, options = {}) {
     if (!this.client) throw new Error('ENGINE_NOT_RUNNING');
     const chars = Array.from(String(text));
@@ -261,17 +240,14 @@ class CdpBrowserEngine extends EventEmitter {
     try {
       await this.stopScreencast();
     } catch {
-      // ignore
     }
     try {
       if (this.client) this.client.close();
     } catch {
-      // ignore
     }
     try {
       if (this.child) this.child.kill();
     } catch {
-      // ignore
     }
     this.client = null;
     this.child = null;

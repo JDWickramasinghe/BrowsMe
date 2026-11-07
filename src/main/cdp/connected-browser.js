@@ -1,14 +1,5 @@
 'use strict';
 
-// ConnectedBrowser — the app-facing manager around CdpBrowserEngine for the
-// "connected browser" feature: the user signs into their Google account in a real
-// Chromium browser that BrowsMe drives over CDP and mirrors into its own window.
-//
-// The real browser is launched HEADFUL (so Google accepts the human sign-in) but
-// positioned off-screen with backgrounding disabled, so the only thing the user
-// sees and touches is the screencast surface inside BrowsMe. Its session lives in a
-// dedicated, persistent profile under the app's userData.
-
 const path = require('node:path');
 const { app } = require('electron');
 const { CdpBrowserEngine } = require('./cdp-browser-engine');
@@ -36,8 +27,6 @@ class ConnectedBrowser {
     return findBrowsers().map((browser) => ({ id: browser.id, label: browser.label }));
   }
 
-  // An installed system browser if any, else a previously-downloaded Chrome for
-  // Testing. Never triggers a download — that is ensureBrowser's job.
   _resolveBrowser(preferredBrowser) {
     const system = findBestBrowser(preferredBrowser);
     if (system) return system;
@@ -46,7 +35,6 @@ class ConnectedBrowser {
     return null;
   }
 
-  // Returns a usable browser, downloading Chrome for Testing if nothing is installed.
   async ensureBrowser(onProgress = () => {}) {
     const existing = this._resolveBrowser();
     if (existing) {
@@ -65,8 +53,6 @@ class ConnectedBrowser {
     }
     const chosen = this._resolveBrowser(preferredBrowser);
     if (!chosen) {
-      // No browser available and none downloaded yet — the UI must call
-      // ensureBrowser (with user consent) before starting.
       return { running: false, needsBrowser: true };
     }
     const userDataDir = path.join(app.getPath('userData'), 'connected-chrome-profile');

@@ -2753,7 +2753,6 @@ svg {
   }
 }
 
-/* Connected browser (CDP real-Chrome view mirrored via screencast) */
 .connected-canvas {
   position: absolute;
   inset: 0;

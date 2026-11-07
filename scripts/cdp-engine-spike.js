@@ -1,23 +1,5 @@
 'use strict';
 
-// Phase 1 de-risking spike for the CDP real-browser engine.
-//
-// Proves, with NO changes to the app, that the whole pipeline works:
-//   1. detect an installed Chromium-family browser,
-//   2. launch it with the Chrome-136-safe dedicated profile + remote debugging,
-//   3. connect over CDP,
-//   4. control the page,
-//   5. capture a screencast frame (what we will render inside BrowsMe),
-//   6. forward a synthetic input event into the page.
-//
-// Headless by default (non-intrusive, no window). Run headful to do a REAL Google
-// sign-in and confirm it persists in the dedicated profile:
-//
-//   node scripts/cdp-engine-spike.js --headful --url=https://accounts.google.com --keep
-//
-// The spike NEVER reads cookie values and NEVER moves cookies anywhere — the login
-// stays in the engine's own profile, which is the whole point.
-
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -83,7 +65,6 @@ async function main() {
     await client.send('Page.enable');
     await client.send('Runtime.enable');
 
-    // 4. Page control.
     await delay(500);
     const title = await client.send('Runtime.evaluate', {
       expression: 'document.title || location.href',
@@ -91,7 +72,6 @@ async function main() {
     });
     console.log('Page control     :', JSON.stringify(title.result.value));
 
-    // 5. Screencast (the frames we will render inside BrowsMe).
     const framePath = path.join(path.dirname(profileDir), `browsme-cdp-spike-frame-${Date.now()}.jpg`);
     const firstFrame = new Promise((resolve) => {
       client.once('Page.screencastFrame', async (params) => {
@@ -100,7 +80,6 @@ async function main() {
           fs.writeFileSync(framePath, bytes);
           await client.send('Page.screencastFrameAck', { sessionId: params.sessionId });
         } catch {
-          // best effort
         }
         resolve({
           width: params.metadata.deviceWidth,
@@ -118,10 +97,6 @@ async function main() {
     console.log('Screencast frame :', `${frame.width}x${frame.height}, ${frame.bytes} bytes -> ${framePath}`);
     assert.ok(frame.bytes > 0, 'Screencast produced an empty frame');
 
-    // 6. Input forwarding (deterministic probe) — HEADLESS ONLY.
-    // In headful mode the user signs in with their own mouse/keyboard, so we must
-    // NOT cover the page with a test overlay. The overlay is injected, clicked, and
-    // then removed immediately so it can never block real interaction.
     if (!headful) {
       await client.send('Runtime.evaluate', {
         expression: `(() => {
@@ -158,18 +133,15 @@ async function main() {
     try {
       if (client) client.close();
     } catch {
-      // ignore
     }
     try {
       child.kill();
     } catch {
-      // ignore
     }
     if (!keepProfile) {
       try {
         fs.rmSync(profileDir, { recursive: true, force: true });
       } catch {
-        // ignore
       }
     }
   }
