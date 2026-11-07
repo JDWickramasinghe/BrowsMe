@@ -2417,10 +2417,25 @@ async function initialize() {
   async function start() {
     showConnected(true);
     try {
-      await window.browsme.connectedStart({
+      let result = await window.browsme.connectedStart({
         viewport: currentViewport(),
         startUrl: 'https://accounts.google.com'
       });
+      if (result && result.needsBrowser) {
+        const ok = window.confirm(
+          'No Chromium browser was found on this computer. Download Google Chrome for Testing (about 150 MB, one time) so BrowsMe can open the connected browser?'
+        );
+        if (!ok) {
+          showConnected(false);
+          return;
+        }
+        showToast('Downloading Chrome for Testing… this happens once.');
+        await window.browsme.connectedEnsureBrowser();
+        result = await window.browsme.connectedStart({
+          viewport: currentViewport(),
+          startUrl: 'https://accounts.google.com'
+        });
+      }
       canvas.focus();
       showToast('Connected browser opening — sign in to Google in this view.');
     } catch (error) {
@@ -2446,6 +2461,14 @@ async function initialize() {
     if (payload && payload.running === false && state.connectedActive) {
       showConnected(false);
       showToast('Connected browser closed.');
+    }
+  });
+  let lastDownloadPercent = -1;
+  window.browsme.onConnectedDownloadProgress((payload) => {
+    if (!payload || typeof payload.percent !== 'number') return;
+    if (payload.percent >= lastDownloadPercent + 10 || payload.percent >= 100) {
+      lastDownloadPercent = payload.percent;
+      showToast(`Downloading Chrome for Testing… ${payload.percent}%`);
     }
   });
 

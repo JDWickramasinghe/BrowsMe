@@ -1,6 +1,6 @@
 {
   "name": "browsme",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "BrowsMe, an AI-assisted Chromium browser created by J.D. Wickramasinghe and powered by DeepSeek.",
   "main": "src/main/main.js",
   "author": "Sobersided",

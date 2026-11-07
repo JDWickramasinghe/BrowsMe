@@ -19,10 +19,11 @@ const { CdpClient } = require('./cdp-client');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class CdpBrowserEngine extends EventEmitter {
-  constructor({ userDataDir, preferredBrowser, headless = false, extraFlags = [] } = {}) {
+  constructor({ userDataDir, preferredBrowser, explicitBrowser, headless = false, extraFlags = [] } = {}) {
     super();
     this.userDataDir = userDataDir;
     this.preferredBrowser = preferredBrowser;
+    this.explicitBrowser = explicitBrowser || null;
     this.headless = headless;
     this.extraFlags = Array.isArray(extraFlags) ? extraFlags : [];
     this.browser = null;
@@ -38,7 +39,7 @@ class CdpBrowserEngine extends EventEmitter {
   async start({ startUrl = 'about:blank', viewport } = {}) {
     if (this.running) return { browser: this.browser, version: this.version };
 
-    const chosen = findBestBrowser(this.preferredBrowser);
+    const chosen = this.explicitBrowser || findBestBrowser(this.preferredBrowser);
     if (!chosen) throw new Error('NO_CHROMIUM_BROWSER');
     this.browser = chosen;
 
