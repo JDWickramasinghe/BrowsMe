@@ -504,7 +504,6 @@ function prefersReducedMotion() {
   }
 }
 
-// If a bubble is mid-type, snap it to its full text (e.g. when a new message arrives).
 function finishActiveTyping() {
   if (activeTypeTimer) {
     clearTimeout(activeTypeTimer);
@@ -516,7 +515,6 @@ function finishActiveTyping() {
   }
 }
 
-// Reveal text progressively so it looks like the AI is typing its reply.
 function typeIntoBubble(el, text) {
   activeTyping = { el, full: text };
   el.textContent = '';
@@ -2327,7 +2325,6 @@ async function initialize() {
   }
 }
 
-// --- Connected browser (CDP real-Chrome view mirrored via screencast) ---
 (function setupConnectedBrowser() {
   const canvas = document.getElementById('connected-canvas');
   const toggle = document.getElementById('connected-toggle');
@@ -2502,7 +2499,6 @@ async function initialize() {
     try {
       await window.browsme.connectedStop();
     } catch {
-      // already stopped
     }
   }
 

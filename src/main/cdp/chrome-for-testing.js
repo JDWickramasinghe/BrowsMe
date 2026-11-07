@@ -1,13 +1,5 @@
 'use strict';
 
-// Fallback browser for machines with no Chromium-family browser installed.
-// Downloads Google's official, standalone "Chrome for Testing" build into the app's
-// own data folder and returns a path to its executable. It is a genuine Chrome
-// build, so Google treats it like normal Chrome for sign-in.
-//
-// Extraction uses the OS's own tools (bsdtar on Windows/macOS, unzip on Linux), so
-// no third-party npm dependency is added.
-
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
@@ -49,7 +41,6 @@ function installDir(userDataDir) {
   return path.join(userDataDir, SUBDIR);
 }
 
-// Path to an already-downloaded Chrome for Testing binary, or '' if not present.
 function installedBinary(userDataDir) {
   const binary = path.join(installDir(userDataDir), binaryRelativePath());
   try {
@@ -92,7 +83,6 @@ function extractZip(zipPath, destination) {
   throw new Error(`CFT_UNZIP_FAILED:${lastError ? lastError.message : 'no extractor available'}`);
 }
 
-// Downloads + extracts Chrome for Testing. onProgress receives { received, total, percent }.
 async function download({ userDataDir, onProgress = () => {} }) {
   const { version, url } = await resolveDownload();
   const destination = installDir(userDataDir);
@@ -115,7 +105,6 @@ async function download({ userDataDir, onProgress = () => {} }) {
   try {
     fs.rmSync(zipPath, { force: true });
   } catch {
-    // ignore
   }
 
   const binary = path.join(destination, binaryRelativePath());
@@ -124,7 +113,6 @@ async function download({ userDataDir, onProgress = () => {} }) {
     try {
       fs.chmodSync(binary, 0o755);
     } catch {
-      // ignore
     }
   }
   return { version, binary };

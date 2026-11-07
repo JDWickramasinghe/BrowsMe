@@ -112,9 +112,9 @@ function requiredEvidenceTypes(prompt) {
   ) {
     required.add('page');
   }
-  // If no browser/identity/memory/tabs/downloads signal matched, treat the message
-  // as general conversation or a directly-answerable question and require no browser
-  // evidence, so the AI can simply reply instead of being forced through the page.
+  if (!required.size) {
+    required.add('page');
+  }
   return required;
 }
 
@@ -1843,8 +1843,6 @@ class AgentService {
     }
   }
 
-  // Lets the model itself decide whether the message needs the browser or is just
-  // conversation — one tiny, tool-free completion that answers BROWSER or CHAT.
   async classifyIntent(run) {
     const system = [
       'You are an intent router for an AI web browser assistant.',
@@ -1862,13 +1860,10 @@ class AgentService {
       );
       return /\bchat\b/i.test(String(reply?.content || ''));
     } catch {
-      // On any failure, fall back to the full browser-capable path.
       return false;
     }
   }
 
-  // A single, tool-free completion for small talk. No task loop, no snapshots,
-  // no receipts — just a warm, plain-language reply.
   async respondConversationally(run) {
     const selfState = this.buildSelfState(run);
     const providerLabel = selfState.provider || 'its model provider';
@@ -2213,7 +2208,7 @@ class AgentService {
             'TASK_REFLECTION_REQUIRED: Reassess the browser action in a later model turn before finishing.'
           );
         }
-        if (status === 'succeeded' && run.requiredEvidenceTypes.size > 0 && run.evidenceCount < 1) {
+        if (status === 'succeeded' && run.evidenceCount < 1) {
           throw new Error(
             'TASK_EVIDENCE_REQUIRED: Observe relevant current-run state before reporting success.'
           );

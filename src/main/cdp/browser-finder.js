@@ -1,17 +1,9 @@
 'use strict';
 
-// Locates an installed Chromium-family browser to drive over CDP.
-// All of these speak the same DevTools protocol with the same launch flags, and
-// all are full, legitimate browsers that Google's "secure browser" policy accepts.
-// Firefox (WebDriver BiDi) and Safari (WebKit protocol) are NOT CDP and are out of
-// scope for this engine.
-
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
-// Priority order. Chrome first (most compatible with Google); Edge is preinstalled
-// on every Windows 11 machine, so it is the de-facto fallback there.
 const FAMILY = ['chrome', 'edge', 'brave', 'vivaldi', 'opera', 'chromium'];
 
 const LABELS = {
@@ -29,7 +21,6 @@ function firstExisting(candidates) {
     try {
       if (fs.existsSync(candidate)) return candidate;
     } catch {
-      // ignore unreadable paths
     }
   }
   return '';
@@ -107,7 +98,6 @@ function candidatesForPlatform() {
   return linuxCandidates();
 }
 
-// Returns [{ id, label, binary }] in priority order, only those actually installed.
 function findBrowsers() {
   const candidates = candidatesForPlatform();
   const found = [];
@@ -118,7 +108,6 @@ function findBrowsers() {
   return found;
 }
 
-// Pick the preferred browser if installed, else the highest-priority one found.
 function findBestBrowser(preferredId) {
   const found = findBrowsers();
   if (preferredId) {

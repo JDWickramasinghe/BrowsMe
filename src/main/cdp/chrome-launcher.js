@@ -1,11 +1,5 @@
 'use strict';
 
-// Launches a Chromium-family browser with remote debugging enabled against a
-// DEDICATED, non-default user-data-dir. Since Chrome 136, --remote-debugging-port
-// is ignored on the default profile (a cookie-theft mitigation), so a separate
-// profile is both required and exactly what we want: the user signs into Google
-// once inside this profile and the session persists there across restarts.
-
 const { spawn } = require('node:child_process');
 const net = require('node:net');
 const fs = require('node:fs');
@@ -42,9 +36,6 @@ async function listTargets(port) {
   return response.json();
 }
 
-// Flags shared by every Chromium browser. Intentionally does NOT include
-// --enable-automation: the human sign-in must look like a normal browser session
-// (no automation banner, no navigator.webdriver).
 const BASE_FLAGS = [
   '--no-first-run',
   '--no-default-browser-check',
@@ -68,7 +59,6 @@ async function launchBrowser({
   const port = await freePort();
   const args = [
     `--remote-debugging-port=${port}`,
-    // CDP WebSocket origin allowlist (required since Chrome 111). Tighten in the app.
     `--remote-allow-origins=${allowedOrigin}`,
     `--user-data-dir=${userDataDir}`,
     `--window-size=${windowSize}`,
@@ -86,7 +76,6 @@ async function launchBrowser({
     try {
       child.kill();
     } catch {
-      // ignore
     }
     throw error;
   });

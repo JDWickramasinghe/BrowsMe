@@ -1,9 +1,5 @@
 'use strict';
 
-// Minimal Chrome DevTools Protocol client over a WebSocket, using Node's global
-// WebSocket (Node >= 22). No third-party dependency. Supports both top-level calls
-// and flattened per-target sessions (pass a sessionId).
-
 const { EventEmitter } = require('node:events');
 
 class CdpClient extends EventEmitter {
@@ -71,7 +67,6 @@ class CdpClient extends EventEmitter {
     }
 
     if (message.method) {
-      // Emit by method name, e.g. client.on('Page.screencastFrame', (params, sessionId) => ...)
       this.emit(message.method, message.params || {}, message.sessionId);
       this.emit('event', message);
     }
@@ -100,7 +95,6 @@ class CdpClient extends EventEmitter {
     try {
       if (this.socket) this.socket.close();
     } catch {
-      // already closing
     }
   }
 }

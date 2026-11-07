@@ -1,9 +1,5 @@
 'use strict';
 
-// Headless exercise of CdpBrowserEngine's full API: launch, screencast streaming,
-// text input (insertText), mouse input, navigation, and clean teardown.
-// Run: node scripts/cdp-engine-test.js
-
 const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert');
@@ -27,14 +23,12 @@ async function main() {
     });
     console.log('started          :', browser.label, '/', version.Browser);
 
-    // Screencast streaming.
     await engine.startScreencast({ everyNthFrame: 1, quality: 50 });
     await delay(1500);
     await engine.stopScreencast();
     console.log('frames streamed  :', frames);
     assert.ok(frames > 0, 'no screencast frames received');
 
-    // Text input via insertText.
     await engine.evaluate(`(() => {
       const i = document.createElement('input');
       i.id = 'box';
@@ -46,7 +40,6 @@ async function main() {
     console.log('typed value      :', JSON.stringify(typed));
     assert.strictEqual(typed, 'hello browsme', 'insertText did not reach the focused input');
 
-    // Mouse input at a real element's coordinates.
     const rect = await engine.evaluate(`(() => {
       const b = document.createElement('button');
       b.textContent = 'Go';
@@ -63,7 +56,6 @@ async function main() {
     console.log('mouse click hit  :', hit);
     assert.strictEqual(hit, true, 'mouse event did not reach the button');
 
-    // Navigation.
     await engine.navigate('https://example.com');
     for (let i = 0; i < 40 && !urlChanges.some((u) => u.includes('example.com')); i += 1) {
       await delay(150);
@@ -78,7 +70,6 @@ async function main() {
     try {
       require('node:fs').rmSync(profileDir, { recursive: true, force: true });
     } catch {
-      // ignore
     }
   }
 }
