@@ -114,7 +114,12 @@ function createLoopHarness(responses) {
     memory,
     emit: (event) => events.push(event)
   });
-  agent.requestCompletion = async (messages) => {
+  agent.requestCompletion = async (messages, _run, options = {}) => {
+    const isIntentRouter = Array.isArray(options.tools) && options.tools.length === 0 &&
+      messages.some((message) => typeof message.content === 'string' && message.content.includes('intent router'));
+    if (isIntentRouter) {
+      return { role: 'assistant', content: 'BROWSER' };
+    }
     observedMessages.push(structuredClone(messages));
     const response = responses.shift();
     if (!response) {

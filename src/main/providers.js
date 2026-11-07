@@ -85,7 +85,10 @@ function buildOpenAiRequest(provider, params) {
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
-  const body = { model, messages, tools, max_tokens: maxTokens };
+  const body = { model, messages, max_tokens: maxTokens };
+  if (tools && tools.length) {
+    body.tools = tools;
+  }
   if (provider.deepseekThinking && thinking) {
     body.thinking = { type: thinking };
   }
