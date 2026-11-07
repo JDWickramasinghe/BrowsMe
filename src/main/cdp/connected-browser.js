@@ -12,7 +12,8 @@
 const path = require('node:path');
 const { app } = require('electron');
 const { CdpBrowserEngine } = require('./cdp-browser-engine');
-const { findBrowsers } = require('./browser-finder');
+const { findBrowsers, findBestBrowser } = require('./browser-finder');
+const chromeForTesting = require('./chrome-for-testing');
 
 const OFFSCREEN_FLAGS = [
   '--window-position=-32000,-32000',
@@ -35,14 +36,43 @@ class ConnectedBrowser {
     return findBrowsers().map((browser) => ({ id: browser.id, label: browser.label }));
   }
 
+  // An installed system browser if any, else a previously-downloaded Chrome for
+  // Testing. Never triggers a download — that is ensureBrowser's job.
+  _resolveBrowser(preferredBrowser) {
+    const system = findBestBrowser(preferredBrowser);
+    if (system) return system;
+    const cft = chromeForTesting.installedBinary(app.getPath('userData'));
+    if (cft) return { id: 'chrome-for-testing', label: 'Chrome for Testing', binary: cft };
+    return null;
+  }
+
+  // Returns a usable browser, downloading Chrome for Testing if nothing is installed.
+  async ensureBrowser(onProgress = () => {}) {
+    const existing = this._resolveBrowser();
+    if (existing) {
+      return { browser: existing.label, downloaded: false };
+    }
+    const { version } = await chromeForTesting.download({
+      userDataDir: app.getPath('userData'),
+      onProgress
+    });
+    return { browser: `Chrome for Testing ${version}`, downloaded: true };
+  }
+
   async start({ viewport, startUrl = 'https://accounts.google.com', preferredBrowser } = {}) {
     if (this.engine) {
       await this.stop();
     }
+    const chosen = this._resolveBrowser(preferredBrowser);
+    if (!chosen) {
+      // No browser available and none downloaded yet — the UI must call
+      // ensureBrowser (with user consent) before starting.
+      return { running: false, needsBrowser: true };
+    }
     const userDataDir = path.join(app.getPath('userData'), 'connected-chrome-profile');
     const engine = new CdpBrowserEngine({
       userDataDir,
-      preferredBrowser,
+      explicitBrowser: chosen,
       headless: false,
       extraFlags: OFFSCREEN_FLAGS
     });

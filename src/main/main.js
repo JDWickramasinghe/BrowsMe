@@ -333,6 +333,9 @@ function installIpcHandlers() {
 
   trustedHandle('connected:resize', (input = {}) => connectedBrowser?.resize(input || {}));
 
+  trustedHandle('connected:ensure-browser', () =>
+    connectedBrowser.ensureBrowser((progress) => send('connected:download-progress', progress)));
+
   trustedHandle('browser:navigate', ({ tabId, url }) => {
     if (typeof url !== 'string' || url.length > 4000) {
       throw new Error('The address is invalid.');
