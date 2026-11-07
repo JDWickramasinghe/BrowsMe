@@ -2752,3 +2752,25 @@ svg {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Connected browser (CDP real-Chrome view mirrored via screencast) */
+.connected-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  z-index: 6;
+  cursor: default;
+  outline: none;
+  display: block;
+}
+
+.connected-canvas[hidden] {
+  display: none;
+}
+
+#connected-toggle.is-active {
+  color: #5b67e8;
+  background: rgba(91, 103, 232, 0.14);
+}
