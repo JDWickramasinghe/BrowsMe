@@ -10,6 +10,8 @@ BrowsMe is an AI-assisted Chromium desktop browser created by J.D. Wickramasingh
 - Personalization in Settings: a light/dark **theme toggle** (quick sun/moon switch in the toolbar, plus a system/light/dark control), a configurable **search engine** (Google, Bing, DuckDuckGo, Brave), a **startup** choice (reopen tabs or a fresh new tab), and **clear browsing data** (cookies, cache, site storage, and history).
 - Tab shortcuts: jump to a tab with `Ctrl+1`–`Ctrl+9` (9 = last), cycle with `Ctrl+Tab` / `Ctrl+Shift+Tab`, and bookmark the current page with `Ctrl+D`.
 - A resizable AI side terminal with visible plans, action results, verification receipts, connection recovery, and immediate Stop controls.
+- A **connected browser**: sign into Google and other sites in a genuine, installed Chromium browser (Chrome, Edge, Brave, Vivaldi, or Opera) that BrowsMe drives and mirrors inside its own window — and that the AI can operate on your behalf under the same approval model. See [Connected browser](#connected-browser).
+- Intent-aware replies: general conversation gets a direct, natural answer, while requests that need the web or the current page run the full agent loop. The distinction is made by the model, not by keyword matching.
 - A multi-chat engine: separate conversations, each with its own persisted history, plus new chat (`Ctrl+Shift+O`), a searchable chat switcher, rename, delete, auto-titling from the first message, per-message copy, and copy-chat-as-Markdown export. Durable facts are shared across all chats as cross-chat memory; conversation history is encrypted per the memory model below.
 - Browser tools for listing, opening, switching, closing, and duplicating tabs; closing other tabs; muting tabs; navigating; inspecting and finding page controls; clicking; hovering; typing and clearing; checking controls; selecting options; pressing keys; scrolling; zooming; finding visible text in a page; reading browsing history; bookmarking pages; saving pages to the reading list; requesting the user to sign in when a page needs authentication; condition-based waiting; observing downloads; and explicitly submitting forms. Every human page/tab action above is also available to the AI through this typed, audited tool surface.
 - A deterministic `observe → act → verify` loop: BrowsMe permits only one state-changing action per model turn, blocks every later mutation until the affected tab is freshly observed, and requires a later reasoning turn before it can report success.
@@ -32,6 +34,22 @@ BrowsMe can fill ordinary text, password, email, search, telephone, URL, number,
 Each change is re-read after the page's handlers run. Hidden native checkboxes and radios remain actionable when they have a visible label. Custom comboboxes and listboxes are handled by opening them, observing their live options, and changing exact ARIA option refs. Custom sliders and spinbuttons can be adjusted with targeted arrow keys and verified from their ARIA values.
 
 Native file pickers, CAPTCHA, WebAuthn, MFA, closed shadow roots, canvas-only controls, and inaccessible cross-origin frames remain human-operated or opaque. BrowsMe does not receive arbitrary host-filesystem access.
+
+## Connected browser
+
+Some sites — Google most notably — refuse to sign in from embedded or Electron-based browsers as a security measure, so an AI-driven app cannot complete those logins directly. BrowsMe's **connected browser** solves this with a genuine, standards-compliant browser rather than by disguising its identity or extracting credentials from elsewhere.
+
+When you open the connected browser (the globe button in the toolbar), BrowsMe launches a real, installed Chromium-family browser — Chrome, Edge, Brave, Vivaldi, or Opera — drives it over the Chrome DevTools Protocol, and mirrors it live inside the BrowsMe window. You sign in once, with your own keyboard, in a browser the provider already trusts; the session persists in a dedicated, isolated profile under the app's data directory. Because it is a real browser, provider sign-in blocks do not apply.
+
+- **The AI can operate it.** With your permission, BrowsMe's agent can read, navigate, click, and type in the connected browser to work through your signed-in sites, under the same approval modes as the rest of the app. It never enters your credentials — you sign in yourself.
+- **No browser installed?** If no Chromium-family browser is found, BrowsMe offers a one-time, consented download of Google's official **Chrome for Testing** and drives that instead, so the feature works on a machine with nothing installed.
+- **Your session stays yours.** BrowsMe does not copy, extract, or transfer cookies or session data out of your other browsers; the connected browser keeps its own profile.
+
+Firefox and Safari use different automation protocols and are outside the connected browser's scope; any Chromium-family browser works.
+
+## Conversation and browser tasks
+
+BrowsMe routes each message by intent. General conversation, greetings, and questions it can answer directly are handled as a normal chat — a concise, plain-language reply with no browser actions, no task plan, and no verification receipts. Requests that need the web or the current page run the full `observe → act → verify` agent loop described below. The classification is made by the model itself rather than by keyword lists, so phrasing does not trip it up.
 
 ## Consistent memory across sessions
 
@@ -147,7 +165,7 @@ Without a certificate the app still runs; Windows will show the "unknown publish
 
 Sign-in popups retain Chromium's opener connection, `postMessage`, named-window reuse, referrer and POST requests in the same persistent profile. This supports popup authentication across providers. BrowsMe detects common embedded/unsupported-browser sign-in rejections and offers **Continue in system browser**; the same action is always available in the browser menu for HTTPS pages. Popup handoffs restart from the originating site so OAuth state and cookies can be created in that browser. Google rejection pages restart at their requested destination instead of reopening the error page.
 
-Google and other providers may reject Electron/embedded browsers regardless of browser identity. The system browser is the supported fallback for those sites. Its signed-in session stays in that browser and does not sign you into BrowsMe; continue using the site there. BrowsMe cannot guarantee that every provider accepts in-app authentication.
+Google and other providers may reject Electron/embedded browsers regardless of browser identity. The recommended path for those sites is the [connected browser](#connected-browser), which signs you in through a real, provider-trusted Chromium browser inside BrowsMe. As a lighter fallback, BrowsMe can also hand the page to your system browser; that signed-in session stays in that browser and does not sign you into BrowsMe. BrowsMe cannot guarantee that every provider accepts in-app authentication.
 
 Remote websites see the app’s real Chromium browser identity without the misleading Electron/app version token. The persistent profile explicitly uses Chromium’s HTTP cache, keeps cookies and signed-in sessions, and reports the operating-system language preferences.
 
