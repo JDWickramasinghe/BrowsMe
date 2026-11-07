@@ -805,7 +805,8 @@ async function createWindow() {
     settings,
     memory,
     history,
-    emit: (payload) => send('agent:event', payload)
+    emit: (payload) => send('agent:event', payload),
+    getConnected: () => connectedBrowser
   });
 
   if (!ipcInstalled) {
