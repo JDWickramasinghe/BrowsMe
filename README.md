@@ -1,6 +1,8 @@
 # BrowsMe
 
-BrowsMe is an AI-assisted Chromium desktop browser created by J.D. Wickramasinghe, published by Sobersided, and powered by DeepSeek. It uses familiar browser tabs and navigation while giving its AI a typed, session-scoped control surface for the pages inside the app.
+BrowsMe is an AI-assisted Chromium desktop browser created by J.D. Wickramasinghe and published by Sobersided. It pairs familiar browser tabs and navigation with a typed, session-scoped control surface that an AI agent can use on the pages inside the app.
+
+BrowsMe runs on **Windows, macOS, and Linux** from one Electron/Chromium codebase, and it is **model-agnostic**: use a cloud provider — DeepSeek, OpenAI, Anthropic (Claude), Google Gemini, OpenRouter, Groq, or Mistral — or a fully local model through Ollama or LM Studio. DeepSeek is the default, not a requirement.
 
 ## What works
 
@@ -12,6 +14,8 @@ BrowsMe is an AI-assisted Chromium desktop browser created by J.D. Wickramasingh
 - A resizable AI side terminal with visible plans, action results, verification receipts, connection recovery, and immediate Stop controls.
 - A **connected browser**: sign into Google and other sites in a genuine, installed Chromium browser (Chrome, Edge, Brave, Vivaldi, or Opera) that BrowsMe drives and mirrors inside its own window — and that the AI can operate on your behalf under the same approval model. See [Connected browser](#connected-browser).
 - Intent-aware replies: general conversation gets a direct, natural answer, while requests that need the web or the current page run the full agent loop. The distinction is made by the model, not by keyword matching.
+- **Cross-platform:** one Electron/Chromium codebase that runs on Windows, macOS, and Linux, with native installers for each (NSIS + portable `.exe`, `.dmg`/`.zip`, and `AppImage`/`.deb`).
+- **Model-agnostic:** works with DeepSeek, OpenAI, Anthropic (Claude), Google Gemini, OpenRouter, Groq, and Mistral, or fully local models via Ollama / LM Studio — DeepSeek is only the default, not a dependency.
 - A multi-chat engine: separate conversations, each with its own persisted history, plus new chat (`Ctrl+Shift+O`), a searchable chat switcher, rename, delete, auto-titling from the first message, per-message copy, and copy-chat-as-Markdown export. Durable facts are shared across all chats as cross-chat memory; conversation history is encrypted per the memory model below.
 - Browser tools for listing, opening, switching, closing, and duplicating tabs; closing other tabs; muting tabs; navigating; inspecting and finding page controls; clicking; hovering; typing and clearing; checking controls; selecting options; pressing keys; scrolling; zooming; finding visible text in a page; reading browsing history; bookmarking pages; saving pages to the reading list; requesting the user to sign in when a page needs authentication; condition-based waiting; observing downloads; and explicitly submitting forms. Every human page/tab action above is also available to the AI through this typed, audited tool surface.
 - A deterministic `observe → act → verify` loop: BrowsMe permits only one state-changing action per model turn, blocks every later mutation until the affected tab is freshly observed, and requires a later reasoning turn before it can report success.
@@ -22,10 +26,10 @@ BrowsMe is an AI-assisted Chromium desktop browser created by J.D. Wickramasingh
 - Completion evidence is goal-specific. Page, identity, memory, tab, and download observations cannot substitute for one another, and composite requests require evidence for every relevant part.
 - Three persistent approval modes let the user ask before every AI web action, automatically allow routine actions on trusted origins, or allow all audited AI web actions inside BrowsMe.
 - Authentication handoff: when a page needs a human to sign in — a login or password form, a one-time code / 2FA / MFA prompt, an OAuth consent screen, a CAPTCHA, or a "this browser is not secure / verify it's you" block — the AI detects it, never types your credentials or codes, and pauses to hand control back to you (with the option to open the page in your system browser) before it re-observes and continues.
-- Three persistent reliability modes tune DeepSeek thinking depth, bounded connection retries, action budgets, and completion checks.
+- Three persistent reliability modes tune the model's thinking depth, bounded connection retries, action budgets, and completion checks.
 - Sandboxed remote pages with no Node.js, filesystem, shell, Electron, cookie, or unrestricted JavaScript API exposed to the model.
 - Paused downloads with safe filenames and manual Save/Deny decisions.
-- DeepSeek API keys protected with Electron `safeStorage`.
+- Provider API keys protected with Electron `safeStorage`.
 
 ## Form coverage
 
@@ -73,7 +77,7 @@ npm install
 npm start
 ```
 
-Open Settings in the browser toolbar, pick a **model provider**, and (for cloud providers) add its API key. The default provider is DeepSeek (`deepseek-v4-flash`).
+Open Settings in the browser toolbar, pick a **model provider**, and (for cloud providers) add its API key. The default provider is DeepSeek (`deepseek-v4-flash`), but you can switch to any supported provider or a local model at any time.
 
 ## Model providers
 
@@ -101,7 +105,7 @@ BrowsMe remembers the selected approval mode across launches:
 
 - **Ask for approval** prompts before every AI-initiated click, typed value, selection, submission, navigation, reload, or tab close.
 - **Approve for me** automatically permits routine actions on origins trusted for the current AI run, but still prompts for sensitive or higher-impact actions and when moving to a new origin.
-- **Full access** automatically permits the broker's enumerated AI web actions inside BrowsMe. It does not grant DeepSeek arbitrary operating-system or filesystem access.
+- **Full access** automatically permits the broker's enumerated AI web actions inside BrowsMe. It does not grant the model arbitrary operating-system or filesystem access.
 
 Every mode keeps protected boundaries under the user's control: downloads, site and device permissions, local or private-network access, saved-memory additions and deletions, native file selection, CAPTCHA, and MFA.
 
@@ -113,7 +117,7 @@ Choose a reliability level in Settings:
 - **Reliable** is the default. It enables deeper thinking, larger bounded action budgets, API retries, recovery snapshots, and multiple completion checks.
 - **Maximum accuracy** gives difficult tasks the largest bounded reasoning, action, and verification budgets.
 
-BrowsMe never blindly replays a click, submission, typed action, or other browser side effect after an error. If an input or navigation fails after a change may have begun, BrowsMe marks the outcome uncertain, revokes unused authority, drains related popup/navigation results, invalidates old references, and requires a fresh observation before another change. Only safe DeepSeek API requests are retried automatically.
+BrowsMe never blindly replays a click, submission, typed action, or other browser side effect after an error. If an input or navigation fails after a change may have begun, BrowsMe marks the outcome uncertain, revokes unused authority, drains related popup/navigation results, invalidates old references, and requires a fresh observation before another change. Only safe model-provider API requests are retried automatically.
 
 These controls substantially reduce mistakes, but no browser agent can honestly guarantee zero errors. Keep manual control for irreversible financial, publishing, deletion, account, CAPTCHA, MFA, and native file-selection steps.
 
@@ -175,7 +179,7 @@ BrowsMe also keeps agent-controlled Chromium pages active when the app is tempor
 
 ## BrowsMe identity
 
-BrowsMe has a fixed operational identity across sessions: its name is BrowsMe, it was created by J.D. Wickramasinghe, and DeepSeek is its underlying model provider. It can inspect its current browser scope, available tabs, Chromium engine, capabilities, and encrypted-memory status through the `browsme_self_state` tool. Enter `/whoami` in the terminal for a current self-description.
+BrowsMe has a fixed operational identity across sessions: its name is BrowsMe and it was created by J.D. Wickramasinghe; its model provider is whichever one you configure (DeepSeek by default). It can inspect its current browser scope, available tabs, Chromium engine, capabilities, and encrypted-memory status through the `browsme_self_state` tool. Enter `/whoami` in the terminal for a current self-description.
 
 This is operational self-awareness, not a claim of human consciousness or feelings.
 
@@ -214,17 +218,17 @@ Electron main process
   ├─ tab/session manager
   ├─ deterministic action, verification, and approval broker
   ├─ encrypted settings and memory
-  └─ DeepSeek tool-call loop
+  └─ model-provider tool-call loop
         │ fixed browser tools only
         ▼
 Sandboxed WebContentsView tabs
 ```
 
-Page text and model output are both treated as untrusted. DeepSeek can ask the broker to perform a defined browser action; it cannot send arbitrary Electron IPC, run operating-system commands, execute model-written JavaScript, read cookies/tokens, or grant its own permissions. Page snapshots flag likely instruction-injection language, while hard-coded policy keeps page content from expanding the user's goal.
+Page text and model output are both treated as untrusted. The model can ask the broker to perform a defined browser action; it cannot send arbitrary Electron IPC, run operating-system commands, execute model-written JavaScript, read cookies/tokens, or grant its own permissions. Page snapshots flag likely instruction-injection language, while hard-coded policy keeps page content from expanding the user's goal.
 
 ## Honest limitations
 
-BrowsMe uses current Chromium through Electron, but it is not Google Chrome and does not include Chrome Sync, Google’s password manager, Chrome extensions, or Chrome-operated Safe Browsing and Certificate Transparency services. DeepSeek V4 is text-only, so BrowsMe currently controls pages from structured semantic snapshots rather than visually interpreting screenshots. CAPTCHA, WebAuthn/MFA, native file selection, and hardware permission prompts remain human-operated. Closed shadow roots and some hostile cross-origin frames can also be opaque to semantic page inspection.
+BrowsMe uses current Chromium through Electron, but it is not Google Chrome and does not include Chrome Sync, Google’s password manager, Chrome extensions, or Chrome-operated Safe Browsing and Certificate Transparency services. BrowsMe drives pages from structured semantic snapshots rather than screenshots, so it works with text-only models and does not require a vision model. CAPTCHA, WebAuthn/MFA, native file selection, and hardware permission prompts remain human-operated. Closed shadow roots and some hostile cross-origin frames can also be opaque to semantic page inspection.
 
 Packaged builds enable restrictive Electron fuses and ASAR integrity validation. For production distribution, also sign the application, keep Electron current, and add a maintained phishing/download reputation service.
 
