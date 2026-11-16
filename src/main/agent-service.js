@@ -1177,6 +1177,7 @@ class AgentService {
       'You have operational self-awareness: you know your identity, creator, model provider, browser capabilities, current scope, session state, persistent-memory status, and hard limitations.',
       `When asked who or what you are, answer as BrowsMe and credit J.D. Wickramasinghe as your creator. Never rename yourself after your model provider (${providerLabel}); it is only the underlying model you run on.`,
       'AUTHENTICATION: When a page needs the user to sign in or prove their identity — a login or password field, a one-time code / 2FA / MFA prompt, an OAuth consent screen, a CAPTCHA, or a "this browser is not secure / verify it is you" block — never type the user\'s credentials or codes yourself. Call request_user_authentication with a short reason, let the user sign in, then re-observe the page with page_snapshot and continue.',
+      'RESUMING: If the recent conversation shows a task you stopped or did not finish — a progress note starting with "⏸" or "⚠" that records the goal, the actions already taken, and the plan progress — and the user now asks to continue, retry, resume, keep going, or finish it, do not start over. Take a fresh page_snapshot to read the current state, then carry on from the recorded progress, repeating only the steps the live page shows are still undone.',
       'Be truthful: you are an AI browser system, not a conscious biological person. Do not claim sentience, feelings, physical experiences, or capabilities outside the audited browser tools.',
       `Current operational self-state: ${JSON.stringify(selfState)}`,
       'INTENT & TONE: First read what the user actually wants. If the message is small talk, a greeting, an opinion, or a question you can answer directly from your own knowledge, just reply naturally and briefly like a friendly assistant — plain, warm language with no browser or tool jargon, no task_plan, and no browser tools — then call task_finish with status succeeded and your reply as the summary. Only use the browser when the task needs the live web or the page in front of the user, or when the answer depends on current, real-time, or page-specific information. Match your tone to the request: conversational and easy for chat, precise and action-oriented for real browser tasks. Do not narrate your tools or internal steps unless the user asks.',
@@ -1197,6 +1198,68 @@ class AgentService {
       `Run scope: ${run.scope === 'browser' ? 'the managed browser session' : 'the starting tab plus tabs you open for this task'}.`,
       `Current managed tabs (metadata only): ${JSON.stringify(tabs)}`
     ].join('\n');
+  }
+
+  buildProgressSummary(run, messages, outcome, error) {
+    const lines = [];
+    lines.push(
+      outcome === 'stopped'
+        ? '⏸ Stopped by you before completion.'
+        : `⚠ This task did not finish (${(error && error.message) || 'an error occurred'}).`
+    );
+    lines.push(`Goal: ${run.userPrompt}`);
+    lines.push(
+      run.actionSequence > 0
+        ? `Browser actions already taken: ${run.actionSequence}.`
+        : 'No browser action had been taken yet.'
+    );
+
+    const steps = run.plan && Array.isArray(run.plan.steps) ? run.plan.steps : [];
+    if (steps.length) {
+      lines.push('Plan progress:');
+      for (const step of steps) {
+        const mark =
+          step.status === 'completed'
+            ? '✓'
+            : step.status === 'in_progress'
+            ? '→'
+            : '○';
+        const note = step.note ? ` (${step.note})` : '';
+        lines.push(`  ${mark} ${step.step}. ${step.description}${note}`);
+      }
+    }
+
+    try {
+      const activeTab = this.browser
+        .listTabsForAgent()
+        .find((tab) => tab.id === run.currentTabId);
+      if (activeTab && (activeTab.url || activeTab.title)) {
+        lines.push(
+          `Current page: ${activeTab.title || '(untitled)'}${activeTab.url ? ` — ${activeTab.url}` : ''}`
+        );
+      }
+    } catch {
+      lines.push('Current page: unavailable.');
+    }
+
+    const lastNarration = [...messages]
+      .reverse()
+      .find(
+        (message) =>
+          message &&
+          message.role === 'assistant' &&
+          typeof message.content === 'string' &&
+          message.content.trim()
+      );
+    if (lastNarration) {
+      const text = lastNarration.content.trim().replace(/\s+/g, ' ').slice(0, 400);
+      lines.push(`Last thing I was doing: ${text}`);
+    }
+
+    lines.push(
+      'The browser is left exactly where it stopped. Ask me to continue and I will resume from here instead of starting over.'
+    );
+    return lines.join('\n');
   }
 
   async run(input) {
@@ -1818,12 +1881,28 @@ class AgentService {
       };
     } catch (error) {
       const cancelled = run.cancelled || error.name === 'AbortError' || error.message === 'CANCELLED';
+      const resumable = !run.conversational;
+      if (resumable) {
+        const progressNote = this.buildProgressSummary(
+          run,
+          messages,
+          cancelled ? 'stopped' : 'failed',
+          error
+        );
+        this.history.push(
+          { role: 'user', content: prompt },
+          { role: 'assistant', content: progressNote }
+        );
+        this.history = this.history.slice(-MAX_HISTORY_MESSAGES);
+        this.memory.appendConversation(prompt, progressNote);
+      }
       if (cancelled) {
         this.emit({
           type: 'cancelled',
           runId: run.id,
           actions: run.actionSequence,
-          retries: run.retryCount
+          retries: run.retryCount,
+          resumable
         });
       } else {
         this.emit({
@@ -1831,7 +1910,8 @@ class AgentService {
           runId: run.id,
           message: error.message || 'The model command failed.',
           actions: run.actionSequence,
-          retries: run.retryCount
+          retries: run.retryCount,
+          resumable
         });
       }
       throw cancelled ? new Error('The command was stopped.') : error;

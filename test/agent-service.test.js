@@ -1446,3 +1446,155 @@ test('reading_list_add saves the current tab exactly once', async () => {
   await agent.executeTool(run, 'reading_list_add', {});
   assert.equal(store.readingList.length, 1);
 });
+
+test('a stopped browser task is remembered as a resumable progress note', async () => {
+  const appended = [];
+  const emitted = [];
+  const browser = {
+    activeTabId: 'tab-1',
+    listTabsForAgent: () => [{
+      id: 'tab-1',
+      active: true,
+      title: 'Checkout',
+      url: 'https://shop.example.com/cart',
+      loading: false
+    }],
+    beginAgentApprovalRun: () => {},
+    endAgentApprovalRun: () => {},
+    includeAgentApprovalTab: () => {},
+    invalidateAgentRefs: () => {},
+    getTab: () => ({ id: 'tab-1', url: 'https://shop.example.com/cart' }),
+    snapshot: async (tabId) => ({
+      ok: true,
+      tabId,
+      title: 'Checkout',
+      url: 'https://shop.example.com/cart',
+      text: 'Ready',
+      elements: [{ ref: 's1-e1', role: 'button', name: 'Place order' }]
+    }),
+    click: async () => ({
+      ok: true,
+      clicked: 'Review order',
+      evidence: { observed: true, changed: true }
+    }),
+    listDownloadsForAgent: () => []
+  };
+  const memory = {
+    getConversation: () => [],
+    getStatus: () => ({
+      persistent: true,
+      encrypted: true,
+      conversationMessages: 0,
+      rememberedFacts: 0
+    }),
+    listFacts: () => [],
+    appendConversation: (prompt, text) => appended.push({ prompt, text })
+  };
+  const settings = {
+    getApiKey: () => 'test-key',
+    getPublicSettings: () => ({
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+      approvalMode: 'full',
+      agentReliability: 'reliable'
+    })
+  };
+  const agent = new AgentService({
+    browser,
+    settings,
+    memory,
+    emit: (event) => emitted.push(event)
+  });
+
+  let turn = 0;
+  agent.requestCompletion = async (messages, _run, options = {}) => {
+    const isIntentRouter = Array.isArray(options.tools) && options.tools.length === 0 &&
+      messages.some((message) => typeof message.content === 'string' && message.content.includes('intent router'));
+    if (isIntentRouter) {
+      return { role: 'assistant', content: 'BROWSER' };
+    }
+    turn += 1;
+    if (turn === 1) {
+      return toolMessage('call-plan', 'task_plan', {
+        goal: 'Complete the purchase',
+        steps: ['Review the cart', 'Place the order']
+      });
+    }
+    if (turn === 2) {
+      return {
+        role: 'assistant',
+        content: 'Reviewing the cart contents before placing the order.',
+        tool_calls: [{
+          id: 'call-click',
+          type: 'function',
+          function: { name: 'page_click', arguments: JSON.stringify({ ref: 's1-e1' }) }
+        }]
+      };
+    }
+    agent.activeRun.cancelled = true;
+    return {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{
+        id: 'call-after-stop',
+        type: 'function',
+        function: { name: 'page_snapshot', arguments: '{}' }
+      }]
+    };
+  };
+
+  await assert.rejects(
+    agent.run({ prompt: 'Buy the blue mug' }),
+    /stopped/i
+  );
+
+  assert.equal(appended.length, 1);
+  assert.equal(appended[0].prompt, 'Buy the blue mug');
+  const note = appended[0].text;
+  assert.match(note, /^⏸ Stopped by you before completion\./);
+  assert.match(note, /Goal: Buy the blue mug/);
+  assert.match(note, /Browser actions already taken: 1\./);
+  assert.match(note, /○ 2\. Place the order/);
+  assert.match(note, /Reviewing the cart contents/);
+  assert.match(note, /resume from here/);
+
+  assert.equal(agent.history.at(-2).content, 'Buy the blue mug');
+  assert.equal(agent.history.at(-1).content, note);
+});
+
+test('a stopped small-talk reply is not recorded as a resumable task', async () => {
+  const appended = [];
+  const browser = {
+    activeTabId: 'tab-1',
+    listTabsForAgent: () => [{ id: 'tab-1', active: true, title: 'Home', url: 'https://example.com/', loading: false }],
+    beginAgentApprovalRun: () => {},
+    endAgentApprovalRun: () => {},
+    includeAgentApprovalTab: () => {},
+    invalidateAgentRefs: () => {}
+  };
+  const memory = {
+    getConversation: () => [],
+    getStatus: () => ({ persistent: true, encrypted: true, conversationMessages: 0, rememberedFacts: 0 }),
+    listFacts: () => [],
+    appendConversation: (prompt, text) => appended.push({ prompt, text })
+  };
+  const settings = {
+    getApiKey: () => 'test-key',
+    getPublicSettings: () => ({ baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-flash', approvalMode: 'full', agentReliability: 'reliable' })
+  };
+  const agent = new AgentService({ browser, settings, memory, emit: () => {} });
+
+  agent.requestCompletion = async (messages, _run, options = {}) => {
+    const isIntentRouter = Array.isArray(options.tools) && options.tools.length === 0 &&
+      messages.some((message) => typeof message.content === 'string' && message.content.includes('intent router'));
+    if (isIntentRouter) {
+      return { role: 'assistant', content: 'CHAT' };
+    }
+    agent.activeRun.cancelled = true;
+    throw new Error('CANCELLED');
+  };
+
+  await assert.rejects(agent.run({ prompt: 'hey there' }), /stopped/i);
+  assert.equal(appended.length, 0);
+  assert.equal(agent.history.length, 0);
+});
