@@ -1044,6 +1044,9 @@ function onAgentEvent(event) {
       appendSystemNote(
         `Command stopped by you · ${event.actions || 0} browser action${event.actions === 1 ? '' : 's'} executed; completed effects were not reversed.`
       );
+      if (event.resumable) {
+        appendSystemNote('Saved where it stopped — ask me to continue and I’ll pick up from here.');
+      }
       setAgentRunning(false, 'Stopped');
       setAgentPhase('stopped');
       retireRun(state.currentRunId);
@@ -1057,6 +1060,9 @@ function onAgentEvent(event) {
       appendSystemNote(
         `Failed receipt · ${event.actions || 0} browser action${event.actions === 1 ? '' : 's'} · ${event.retries || 0} connection retr${event.retries === 1 ? 'y' : 'ies'}`
       );
+      if (event.resumable) {
+        appendSystemNote('Saved where it stopped — ask me to continue and I’ll pick up from here.');
+      }
       setAgentRunning(false, 'Failed');
       setAgentPhase('failed');
       retireRun(state.currentRunId);
