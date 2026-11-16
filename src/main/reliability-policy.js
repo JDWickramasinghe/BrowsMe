@@ -14,8 +14,8 @@ const RELIABILITY_PROFILES = Object.freeze({
     label: 'Fast',
     thinking: 'disabled',
     reasoningEffort: null,
-    maxSteps: 18,
-    maxToolCalls: 36,
+    maxSteps: 500,
+    maxToolCalls: 1000,
     maxTokens: 4096,
     apiAttempts: 2,
     completionChecks: 1
@@ -25,8 +25,8 @@ const RELIABILITY_PROFILES = Object.freeze({
     label: 'Reliable',
     thinking: 'enabled',
     reasoningEffort: 'high',
-    maxSteps: 30,
-    maxToolCalls: 60,
+    maxSteps: 1000,
+    maxToolCalls: 2000,
     maxTokens: 8192,
     apiAttempts: 3,
     completionChecks: 2
@@ -36,8 +36,8 @@ const RELIABILITY_PROFILES = Object.freeze({
     label: 'Maximum',
     thinking: 'enabled',
     reasoningEffort: 'max',
-    maxSteps: 44,
-    maxToolCalls: 88,
+    maxSteps: 2000,
+    maxToolCalls: 4000,
     maxTokens: 12288,
     apiAttempts: 4,
     completionChecks: 3
