@@ -16,17 +16,11 @@
         <div class="tab-strip" aria-label="Tabs">
           <div class="brand-mark" aria-label="BrowsMe">
             <svg class="brand-mark-svg" viewBox="0 0 64 64" aria-hidden="true">
-              <defs>
-                <linearGradient id="bm-grad" x1="6" y1="8" x2="58" y2="56" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stop-color="#5b67e8"></stop>
-                  <stop offset="1" stop-color="#7958ef"></stop>
-                </linearGradient>
-              </defs>
-              <g fill="none" stroke="url(#bm-grad)" stroke-width="6" stroke-linecap="round">
+              <g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round">
                 <ellipse cx="32" cy="32" rx="23" ry="10.5" transform="rotate(45 32 32)"></ellipse>
                 <ellipse cx="32" cy="32" rx="23" ry="10.5" transform="rotate(-45 32 32)"></ellipse>
               </g>
-              <circle cx="32" cy="32" r="8" fill="url(#bm-grad)"></circle>
+              <circle cx="32" cy="32" r="8" fill="currentColor"></circle>
             </svg>
           </div>
           <div id="tabs" class="tabs" role="tablist"></div>
@@ -149,99 +143,84 @@
 
         <div id="panel-splitter" class="panel-splitter" role="separator" aria-label="Resize AI terminal" aria-orientation="vertical" tabindex="0"></div>
 
-        <aside id="ai-panel" class="ai-panel" aria-label="BrowsMe AI terminal">
-          <div class="ai-header">
-            <div class="ai-heading">
-              <div class="ai-avatar">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.4 4.2L18 9l-4.6 1.8L12 15l-1.4-4.2L6 9l4.6-1.8L12 3Z"></path><path d="m18.5 15 .7 2.1 2.3.9-2.3.9-.7 2.1-.7-2.1-2.3-.9 2.3-.9.7-2.1Z"></path></svg>
-              </div>
-              <div>
-                <h1>BrowsMe</h1>
-                <div class="model-line">
-                  <span id="ai-status-dot" class="status-dot"></span>
-                  <span id="connection-label">Needs API key</span>
-                  <span aria-hidden="true">·</span>
-                  <span id="model-label">Model</span>
-                  <span aria-hidden="true">·</span>
-                  <span id="approval-mode-chip" class="approval-mode-chip">Ask</span>
+        <aside id="ai-panel" class="ai-panel" aria-label="BrowsMe assistant">
+          <div class="assistant-controls" role="group" aria-label="Chat controls">
+            <button id="new-chat" class="mini-button" type="button" aria-label="New chat" title="New chat (Ctrl+Shift+O)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            </button>
+            <button id="chats-button" class="mini-button" type="button" aria-label="All chats" title="All chats" aria-expanded="false" aria-controls="chats-popover">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+            </button>
+            <button id="assistant-options" class="mini-button" type="button" aria-label="Assistant options" title="Assistant options" aria-haspopup="menu" aria-expanded="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"></path></svg>
+            </button>
+            <button id="collapse-ai" class="mini-button" type="button" aria-label="Close assistant" title="Close assistant">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+            </button>
+          </div>
+
+          <div class="assistant-surface">
+            <div id="control-banner" class="control-banner" hidden>
+              <span id="control-banner-label">AI controlling this session</span>
+              <button id="stop-agent-top" type="button">Stop</button>
+            </div>
+
+            <section class="assistant-intro" aria-labelledby="assistant-intro-title">
+              <div class="assistant-info">
+                <span class="assistant-info-label">Info</span>
+                <div class="assistant-info-body">
+                  <p>BrowsMe can summarize pages, find details, and help across tabs. It shares only the page content needed for your request with the model provider.</p>
+                  <button id="assistant-model-details" type="button" class="assistant-info-action">
+                    <span>Model</span>
+                    <strong id="assistant-model-status">Set up AI</strong>
+                  </button>
+                  <p class="assistant-info-status">Approval <strong id="assistant-approval-status">Ask first</strong></p>
                 </div>
               </div>
-            </div>
-            <div class="ai-header-actions">
-              <button id="new-chat" class="mini-button" type="button" aria-label="New chat" title="New chat (Ctrl+Shift+O)">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
-              </button>
-              <button id="chats-button" class="mini-button" type="button" aria-label="All chats" title="All chats">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
-              </button>
-              <button id="clear-agent" class="mini-button" type="button" aria-label="Clear this chat" title="Clear this chat">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M8 10v7M12 10v7M16 10v7M6 7l1 14h10l1-14"></path></svg>
-              </button>
-              <button id="collapse-ai" class="mini-button" type="button" aria-label="Close AI terminal" title="Close">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
-              </button>
-            </div>
-          </div>
-
-          <div class="chat-bar">
-            <button id="chat-switcher" class="chat-switcher" type="button" aria-label="Switch chat">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10h8M8 14h5M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12Z"></path></svg>
-              <span id="chat-title">New chat</span>
-              <svg class="chat-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-            </button>
-            <button id="chat-export" class="mini-button" type="button" aria-label="Copy this chat as Markdown" title="Copy chat as Markdown">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>
-            </button>
-          </div>
-
-          <div id="control-banner" class="control-banner" hidden>
-            <div>
-              <span class="control-pulse"></span>
-              <span id="control-banner-label">AI controlling this session</span>
-            </div>
-            <button id="stop-agent-top" type="button">Stop</button>
-          </div>
-
-          <div id="terminal-log" class="terminal-log" role="log" aria-live="polite">
-            <section class="welcome-card">
-              <div class="welcome-orb">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2Z"></path><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15Z"></path></svg>
-              </div>
-              <h2>I’m BrowsMe, created by J.D. Wickramasinghe</h2>
-              <p>I’m aware of my identity, browser tools, current scope, and persistent memory. Tell me what to do in this browser.</p>
-              <div class="privacy-note">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2"></path><rect x="5" y="10" width="14" height="10" rx="3"></rect></svg>
-                <span>Only browser content needed for your request is sent to the model provider.</span>
-              </div>
+              <h2 id="assistant-intro-title">Ask about <span id="assistant-intro-scope">this page.</span></h2>
             </section>
-          </div>
 
-          <div id="suggestions" class="suggestions">
-            <button type="button" data-prompt="/whoami">Who are you?</button>
-            <button type="button" data-prompt="Summarize the current page in five bullets.">Summarize this page</button>
-            <button type="button" data-prompt="Find the main pricing information on this page.">Find pricing</button>
-            <button type="button" data-prompt="List all open tabs and tell me what each one is about.">Review my tabs</button>
-          </div>
+            <div id="terminal-log" class="terminal-log" role="log" aria-label="Conversation" aria-live="polite"></div>
 
-          <div class="terminal-composer">
-            <div class="composer-topline">
-              <span class="terminal-prompt">browser@browsme:~&gt; <span class="browser-only-badge">Browser only</span></span>
-              <label class="scope-control">
-                <span>Context</span>
-                <select id="agent-scope" aria-label="AI browser scope">
-                  <option value="active">Current tab + new tabs</option>
-                  <option value="browser">Whole browser</option>
-                </select>
-              </label>
-            </div>
-            <div class="composer-box">
-              <textarea id="agent-input" rows="2" maxlength="12000" aria-label="Task for BrowsMe" placeholder="Tell BrowsMe what to do…"></textarea>
-              <button id="send-agent" class="send-button" type="button" aria-label="Run command">
-                <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 14-8-4 16-3-6-7-2Z"></path><path d="m12 14 7-10"></path></svg>
-                <svg class="send-stop-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>
+            <div id="suggestions" class="suggestions" role="group" aria-label="Suggested prompts">
+              <button type="button" data-prompt="Summarize the current page in five bullets.">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8M8 12h8m-8 5h5"></path><rect x="4" y="3" width="16" height="18" rx="3"></rect></svg>
+                <span class="suggestion-label">Summarize page</span>
+              </button>
+              <button type="button" data-prompt="List all open tabs and tell me what each one is about.">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="13" height="13" rx="2"></rect><path d="M4 15V6a2 2 0 0 1 2-2h9"></path></svg>
+                <span class="suggestion-label">Review my tabs</span>
+              </button>
+              <button type="button" data-prompt="Find the main pricing information on this page.">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4h6l1 1v6l-8 9-8-8 9-8Z"></path><circle cx="16" cy="8" r="1"></circle></svg>
+                <span class="suggestion-label">Find pricing</span>
+              </button>
+              <button type="button" data-prompt="/whoami">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 11v5m0-8h.01"></path></svg>
+                <span class="suggestion-label">Who are you?</span>
               </button>
             </div>
-            <div class="composer-hint"><span>Enter to send · Shift+Enter for a new line</span><span id="agent-state-label" role="status" aria-live="polite" aria-atomic="true">Ready</span></div>
+
+            <div class="terminal-composer">
+              <div class="composer-controls">
+                <button id="composer-model" class="composer-picker" type="button" aria-haspopup="menu" aria-expanded="false">
+                  <span>Model</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg>
+                </button>
+                <button id="composer-context" class="composer-picker" type="button" aria-haspopup="menu" aria-expanded="false">
+                  <span id="composer-context-label">This tab + new tabs</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg>
+                </button>
+              </div>
+              <div class="composer-entry">
+                <textarea id="agent-input" rows="2" maxlength="12000" aria-label="Ask BrowsMe" placeholder="Ask BrowsMe…"></textarea>
+                <button id="send-agent" class="send-button" type="button" aria-label="Send prompt" title="Send prompt (Enter)">
+                  <span class="send-label">Send</span>
+                  <span class="send-stop-label">Stop</span>
+                </button>
+              </div>
+            </div>
+            <span id="agent-state-label" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true">Ready</span>
           </div>
         </aside>
       </main>
@@ -298,181 +277,191 @@
       </section>
 
       <div id="settings-overlay" class="modal-overlay" hidden>
-        <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-          <div class="modal-header">
-            <div>
-              <span class="eyebrow">BROWSME · CREATED BY J.D. WICKRAMASINGHE</span>
-              <h2 id="settings-title">BrowsMe settings</h2>
-              <p>Your API key stays in the trusted desktop process and is never exposed to websites.</p>
+        <section class="settings-modal settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+          <div class="settings-rail">
+            <h2 id="settings-title">Settings</h2>
+            <div class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+              <button id="settings-tab-connection" type="button" role="tab" aria-controls="settings-connection" aria-selected="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13.5a4 4 0 0 0 5.7 0l3.5-3.5a4 4 0 0 0-5.7-5.7l-2 2M14 10.5a4 4 0 0 0-5.7 0L4.8 14a4 4 0 0 0 5.7 5.7l2-2"></path></svg>
+                Connection
+              </button>
+              <button id="settings-tab-browser" type="button" role="tab" aria-controls="settings-browser" aria-selected="false" tabindex="-1">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><path d="M4 9h16M7 6.8h.01M10 6.8h.01"></path></svg>
+                Browser
+              </button>
+              <button id="settings-tab-assistant" type="button" role="tab" aria-controls="settings-assistant" aria-selected="false" tabindex="-1">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.7-3.1a7.5 7.5 0 1 1 13.3-4.4Z"></path><path d="M9 11.5h7"></path></svg>
+                Assistant
+              </button>
             </div>
-            <button id="close-settings" class="mini-button" type="button" aria-label="Close settings">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
-            </button>
+            <p class="publisher-credit">Published by <span>sobersided.</span></p>
           </div>
           <div class="settings-body">
-            <label class="provider-setting">
-              <span>Model provider</span>
-              <select id="provider-input">
-                <option value="deepseek">DeepSeek</option>
-                <option value="openai">OpenAI</option>
-                <option value="openrouter">OpenRouter</option>
-                <option value="groq">Groq</option>
-                <option value="mistral">Mistral</option>
-                <option value="anthropic">Anthropic (Claude)</option>
-                <option value="gemini">Google Gemini</option>
-                <option value="ollama">Ollama — local</option>
-                <option value="lmstudio">LM Studio — local</option>
-                <option value="custom">Custom (OpenAI-compatible)</option>
-              </select>
-              <small>Pick a cloud provider or a local model server. Changing this fills in the API address and a default model. Local servers don't need an API key.</small>
-            </label>
-
-            <div class="setting-section">
-              <div class="section-icon">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7a4 4 0 1 0-7.7 1.5L3 13v4h4v-2h2v-2h2.5l1-1A4 4 0 0 0 15 7Z"></path><circle cx="11" cy="7" r=".5"></circle></svg>
-              </div>
-              <div class="setting-content">
-                <label for="api-key" id="api-key-label">API key</label>
-                <div class="input-with-action">
-                  <input id="api-key" name="browsme-deepseek-api-key" type="password" autocomplete="new-password" placeholder="sk-…">
-                  <button id="toggle-key" type="button">Show</button>
+            <section id="settings-connection" class="settings-group" role="tabpanel" aria-labelledby="settings-tab-connection">
+              <h3>Model connection</h3>
+              <div class="setting-row">
+                <div>
+                  <label for="provider-input">Model provider</label>
+                  <p id="provider-hint">Choose a cloud provider or run a model locally. This sets a default model and API address.</p>
                 </div>
-                <div class="setting-meta">
-                  <span id="api-key-status">No key configured</span>
-                  <button id="clear-key" class="text-button danger-text" type="button">Remove saved key</button>
-                </div>
-                <label class="check-row">
-                  <input id="remember-key" type="checkbox" checked>
-                  <span>
-                    <strong>Encrypt and remember on this computer</strong>
-                    <small>Uses your operating system’s protected storage.</small>
-                  </span>
-                </label>
+                <select id="provider-input" aria-describedby="provider-hint">
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="groq">Groq</option>
+                  <option value="mistral">Mistral</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="ollama">Ollama — local</option>
+                  <option value="lmstudio">LM Studio — local</option>
+                  <option value="custom">Custom (OpenAI-compatible)</option>
+                </select>
               </div>
-            </div>
 
-            <div class="setting-grid">
-              <label>
-                <span>Model</span>
-                <input id="model-input" type="text" value="deepseek-v4-flash" spellcheck="false">
-                <small id="model-hint">The model id to use (e.g. deepseek-v4-flash, gpt-4o, claude-sonnet-4-5, llama3.1:8b).</small>
-              </label>
-              <label>
-                <span>API address</span>
-                <input id="base-url-input" type="url" value="https://api.deepseek.com" spellcheck="false">
-                <small>OpenAI-compatible <code>/chat/completions</code> endpoint.</small>
-              </label>
-            </div>
+              <div class="setting-row">
+                <div>
+                  <label for="api-key" id="api-key-label">API key</label>
+                  <p id="api-key-hint">The desktop app keeps your key private from websites.</p>
+                </div>
+                <div class="setting-key">
+                  <div class="input-with-action">
+                    <input id="api-key" name="browsme-deepseek-api-key" type="password" autocomplete="new-password" placeholder="Enter API key" aria-describedby="api-key-hint api-key-status">
+                    <button id="toggle-key" type="button">Show</button>
+                  </div>
+                  <div class="setting-meta">
+                    <span id="api-key-status" aria-live="polite">No key configured</span>
+                    <button id="clear-key" class="text-button" type="button">Remove saved key</button>
+                  </div>
+                  <label class="check-row">
+                    <input id="remember-key" type="checkbox" aria-describedby="remember-key-hint" checked>
+                    <span>Remember on this computer <small id="remember-key-hint">Encrypted using your system’s protected storage.</small></span>
+                  </label>
+                </div>
+              </div>
 
-            <div class="setting-grid">
-              <label>
-                <span>Appearance</span>
-                <select id="theme-input">
+              <div class="setting-row">
+                <div>
+                  <label for="model-input">Model</label>
+                  <p id="model-hint">Enter the model ID from your provider, such as deepseek-v4-flash.</p>
+                </div>
+                <input id="model-input" type="text" value="deepseek-v4-flash" spellcheck="false" aria-describedby="model-hint">
+              </div>
+              <div class="setting-row">
+                <div>
+                  <label for="base-url-input">API address</label>
+                  <p id="base-url-hint">The base URL for your provider or local server.</p>
+                </div>
+                <input id="base-url-input" type="url" value="https://api.deepseek.com" spellcheck="false" aria-describedby="base-url-hint">
+              </div>
+            </section>
+
+            <section id="settings-browser" class="settings-group" role="tabpanel" aria-labelledby="settings-tab-browser" hidden>
+              <h3>Browser</h3>
+              <div class="setting-row">
+                <div>
+                  <label for="theme-input">Appearance</label>
+                  <p id="theme-hint">Choose a theme for the BrowsMe interface.</p>
+                </div>
+                <select id="theme-input" aria-describedby="theme-hint">
                   <option value="system">Match system</option>
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                 </select>
-                <small>Controls the BrowsMe interface theme.</small>
-              </label>
-              <label>
-                <span>Search engine</span>
-                <select id="search-engine-input">
+              </div>
+              <div class="setting-row">
+                <div>
+                  <label for="search-engine-input">Search engine</label>
+                  <p id="search-engine-hint">Used when you search from the address bar.</p>
+                </div>
+                <select id="search-engine-input" aria-describedby="search-engine-hint">
                   <option value="google">Google</option>
                   <option value="bing">Bing</option>
                   <option value="duckduckgo">DuckDuckGo</option>
                   <option value="brave">Brave</option>
                 </select>
-                <small>Used when you type a search in the address bar.</small>
-              </label>
-            </div>
-
-            <label class="reliability-setting">
-              <span>
-                <strong>On startup</strong>
-                <small>Reopen your previous tabs, or begin with a fresh new tab page.</small>
-              </span>
-              <select id="startup-input">
-                <option value="restore">Reopen previous tabs</option>
-                <option value="newtab">Open the new tab page</option>
-              </select>
-            </label>
-
-            <div class="reliability-setting">
-              <span>
-                <strong>Clear browsing data</strong>
-                <small>Remove cookies, cached files, and site storage, plus your BrowsMe history.</small>
-              </span>
-              <button id="clear-data" class="secondary-button" type="button">Clear data</button>
-            </div>
-
-            <label class="reliability-setting">
-              <span>
-                <strong>Task reliability</strong>
-                <small>Controls the model's thinking depth, retries, action budget, and completion verification. Maximum is slower and is not a guarantee.</small>
-              </span>
-              <select id="agent-reliability">
-                <option value="fast">Fast</option>
-                <option value="reliable" selected>Reliable</option>
-                <option value="maximum">Maximum accuracy</option>
-              </select>
-            </label>
-
-            <fieldset class="approval-mode-group">
-              <legend>How should BrowsMe actions be approved?</legend>
-
-              <label class="approval-mode-card">
-                <input type="radio" name="approval-mode" value="ask" checked>
-                <span class="approval-mode-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M7 11V6.8a1.5 1.5 0 0 1 3 0V10M10 10V5.5a1.5 1.5 0 0 1 3 0V10M13 10V6.5a1.5 1.5 0 0 1 3 0V11M16 11V8.5a1.5 1.5 0 0 1 3 0v6.2c0 4-2.7 6.3-6.5 6.3h-1.2c-2.2 0-3.6-.8-4.8-2.5L3.4 14a1.6 1.6 0 0 1 2.5-1.9L8 14.5"></path></svg>
-                </span>
-                <span class="approval-mode-copy">
-                  <strong>Ask for approval</strong>
-                  <small>Ask before every AI click, typed value, submission, or navigation.</small>
-                </span>
-                <span class="approval-mode-check" aria-hidden="true">✓</span>
-              </label>
-
-              <label class="approval-mode-card">
-                <input type="radio" name="approval-mode" value="auto-safe">
-                <span class="approval-mode-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.3 8-8 9-4.7-1-8-4-8-9V6l8-3Z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg>
-                </span>
-                <span class="approval-mode-copy">
-                  <strong>Approve for me</strong>
-                  <small>Allow routine actions automatically; ask only before sensitive actions.</small>
-                </span>
-                <span class="approval-mode-check" aria-hidden="true">✓</span>
-              </label>
-
-              <label class="approval-mode-card approval-mode-full">
-                <input type="radio" name="approval-mode" value="full">
-                <span class="approval-mode-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.3 8-8 9-4.7-1-8-4-8-9V6l8-3Z"></path><path d="M12 8v5M12 17h.01"></path></svg>
-                </span>
-                <span class="approval-mode-copy">
-                  <strong>Full access</strong>
-                  <small>Allow all AI web actions inside BrowsMe without asking.</small>
-                </span>
-                <span class="approval-mode-check" aria-hidden="true">✓</span>
-              </label>
-
-              <p class="approval-mode-footnote">
-                Downloads, site permissions, local-network access, saved-memory changes, file pickers, CAPTCHA, and MFA remain under your control.
-              </p>
-            </fieldset>
-
-            <div class="disclosure-card">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"></path><path d="m9 12 2 2 4-4"></path></svg>
-              <div>
-                <strong>Browser-scoped authority</strong>
-                <p>The model gets typed browser controls—not an operating-system shell. Pages, downloads, and model output are treated as untrusted.</p>
               </div>
-            </div>
 
-            <div class="publisher-credit" aria-label="Published by Sobersided">
-              <span class="publisher-label">Published by</span>
-              <span class="publisher-wordmark">sobersided<span class="publisher-dot">.</span></span>
-            </div>
+              <div class="setting-row">
+                <label for="startup-input">On startup</label>
+                <select id="startup-input">
+                  <option value="restore">Reopen previous tabs</option>
+                  <option value="newtab">Open the new tab page</option>
+                </select>
+              </div>
+
+              <div class="setting-row">
+                <div>
+                  <strong>Clear browsing data</strong>
+                  <p id="clear-data-hint">Remove cookies, cached files, site storage, and BrowsMe history.</p>
+                </div>
+                <button id="clear-data" class="secondary-button" type="button" aria-describedby="clear-data-hint">Clear data</button>
+              </div>
+            </section>
+
+            <section id="settings-assistant" class="settings-group" role="tabpanel" aria-labelledby="settings-tab-assistant" hidden>
+              <h3>Assistant controls</h3>
+              <div class="setting-row">
+                <div>
+                  <label for="agent-reliability">Task reliability</label>
+                  <p id="reliability-hint">Higher settings give the assistant more time for reasoning, retries, and verification.</p>
+                </div>
+                <select id="agent-reliability" aria-describedby="reliability-hint">
+                  <option value="fast">Fast</option>
+                  <option value="reliable" selected>Reliable</option>
+                  <option value="maximum">Maximum accuracy</option>
+                </select>
+              </div>
+
+              <fieldset class="approval-mode-group">
+                <legend>Action approvals</legend>
+
+                <label class="approval-mode-card">
+                  <input type="radio" name="approval-mode" value="ask" checked>
+                  <span class="approval-mode-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M7 11V6.8a1.5 1.5 0 0 1 3 0V10M10 10V5.5a1.5 1.5 0 0 1 3 0V10M13 10V6.5a1.5 1.5 0 0 1 3 0V11M16 11V8.5a1.5 1.5 0 0 1 3 0v6.2c0 4-2.7 6.3-6.5 6.3h-1.2c-2.2 0-3.6-.8-4.8-2.5L3.4 14a1.6 1.6 0 0 1 2.5-1.9L8 14.5"></path></svg>
+                  </span>
+                  <span class="approval-mode-copy">
+                    <strong>Ask for approval</strong>
+                    <small>Ask before every AI click, typed value, submission, or navigation.</small>
+                  </span>
+                </label>
+
+                <label class="approval-mode-card">
+                  <input type="radio" name="approval-mode" value="auto-safe">
+                  <span class="approval-mode-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.3 8-8 9-4.7-1-8-4-8-9V6l8-3Z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg>
+                  </span>
+                  <span class="approval-mode-copy">
+                    <strong>Approve for me</strong>
+                    <small>Allow routine actions automatically and ask before sensitive actions.</small>
+                  </span>
+                </label>
+
+                <label class="approval-mode-card approval-mode-full">
+                  <input type="radio" name="approval-mode" value="full">
+                  <span class="approval-mode-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.3 8-8 9-4.7-1-8-4-8-9V6l8-3Z"></path><path d="M12 8v5M12 17h.01"></path></svg>
+                  </span>
+                  <span class="approval-mode-copy">
+                    <strong>Full access</strong>
+                    <small>Allow all AI web actions inside BrowsMe without asking.</small>
+                  </span>
+                </label>
+
+                <p class="approval-mode-footnote">
+                  Downloads, site permissions, local-network access, saved-memory changes, file pickers, CAPTCHA, and MFA remain under your control.
+                </p>
+              </fieldset>
+
+              <div class="disclosure-card">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"></path><path d="m9 12 2 2 4-4"></path></svg>
+                <div>
+                  <strong>Browser-scoped authority</strong>
+                  <p>The model can act through BrowsMe’s browser controls. BrowsMe treats pages, downloads, and model output as untrusted.</p>
+                  <p>Only browser content needed for your request is sent to the model provider.</p>
+                </div>
+              </div>
+            </section>
           </div>
           <div class="modal-footer">
             <span id="settings-error" class="form-error" role="alert"></span>
@@ -481,6 +470,9 @@
               <button id="save-settings" class="primary-button" type="button">Save settings</button>
             </div>
           </div>
+          <button id="close-settings" class="mini-button" type="button" aria-label="Close settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+          </button>
         </section>
       </div>
 
@@ -488,7 +480,6 @@
         <section class="settings-modal history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
           <div class="modal-header">
             <div>
-              <span class="eyebrow">BROWSING HISTORY</span>
               <h2 id="history-title">History</h2>
               <p>Pages you have visited in BrowsMe. Select one to reopen it.</p>
             </div>
@@ -509,14 +500,16 @@
 
       <div id="decision-overlay" class="modal-overlay decision-overlay" hidden>
         <section class="decision-modal" role="alertdialog" aria-modal="true" aria-labelledby="decision-title" aria-describedby="decision-description">
-          <div id="decision-icon" class="decision-icon">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"></path><path d="M12 8v4M12 16h.01"></path></svg>
+          <div class="decision-body">
+            <div id="decision-icon" class="decision-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"></path><path d="M12 8v4M12 16h.01"></path></svg>
+            </div>
+            <span id="decision-eyebrow" class="eyebrow">APPROVAL REQUIRED</span>
+            <h2 id="decision-title">Allow this browser action?</h2>
+            <p id="decision-description"></p>
+            <div id="decision-origin" class="origin-card"></div>
+            <p id="decision-footnote" class="decision-footnote">The page and the AI cannot approve this. Only you can.</p>
           </div>
-          <span id="decision-eyebrow" class="eyebrow">APPROVAL REQUIRED</span>
-          <h2 id="decision-title">Allow this browser action?</h2>
-          <p id="decision-description"></p>
-          <div id="decision-origin" class="origin-card"></div>
-          <p id="decision-footnote" class="decision-footnote">The page and the AI cannot approve this. Only you can.</p>
           <div class="decision-actions">
             <button id="deny-decision" class="secondary-button" type="button">Deny</button>
             <button id="decision-external" class="secondary-button" type="button" hidden>Open in system browser</button>

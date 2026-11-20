@@ -27,19 +27,18 @@ const ui = {
   controlBannerLabel: document.getElementById('control-banner-label'),
   stopAgentTop: document.getElementById('stop-agent-top'),
   agentInput: document.getElementById('agent-input'),
-  agentScope: document.getElementById('agent-scope'),
+  composerModel: document.getElementById('composer-model'),
+  composerContext: document.getElementById('composer-context'),
+  composerContextLabel: document.getElementById('composer-context-label'),
+  assistantModelDetails: document.getElementById('assistant-model-details'),
+  assistantModelStatus: document.getElementById('assistant-model-status'),
+  assistantApprovalStatus: document.getElementById('assistant-approval-status'),
+  assistantIntroScope: document.getElementById('assistant-intro-scope'),
   sendAgent: document.getElementById('send-agent'),
   agentStateLabel: document.getElementById('agent-state-label'),
-  aiStatusDot: document.getElementById('ai-status-dot'),
-  connectionLabel: document.getElementById('connection-label'),
-  modelLabel: document.getElementById('model-label'),
-  approvalModeChip: document.getElementById('approval-mode-chip'),
-  clearAgent: document.getElementById('clear-agent'),
   newChat: document.getElementById('new-chat'),
   chatsButton: document.getElementById('chats-button'),
-  chatSwitcher: document.getElementById('chat-switcher'),
-  chatTitle: document.getElementById('chat-title'),
-  chatExport: document.getElementById('chat-export'),
+  assistantOptions: document.getElementById('assistant-options'),
   chatsPopover: document.getElementById('chats-popover'),
   chatSearch: document.getElementById('chat-search'),
   chatsNew: document.getElementById('chats-new'),
@@ -51,6 +50,9 @@ const ui = {
   downloadsList: document.getElementById('downloads-list'),
   settingsButton: document.getElementById('settings-button'),
   settingsOverlay: document.getElementById('settings-overlay'),
+  settingsBody: document.querySelector('.settings-body'),
+  settingsTabList: document.querySelector('.settings-tabs'),
+  settingsTabs: Array.from(document.querySelectorAll('.settings-tabs [role="tab"]')),
   closeSettings: document.getElementById('close-settings'),
   cancelSettings: document.getElementById('cancel-settings'),
   saveSettings: document.getElementById('save-settings'),
@@ -126,6 +128,7 @@ const state = {
   memory: null,
   downloads: [],
   agentRunning: false,
+  agentScope: 'active',
   agentPhase: 'idle',
   currentRunId: null,
   currentReliability: null,
@@ -140,6 +143,7 @@ const state = {
 const FIND_BAR_HEIGHT = 44;
 let findDebounce = null;
 let openContextMenu = null;
+let contextMenuTrigger = null;
 
 const toolCards = new Map();
 const retiredRunIds = new Set();
@@ -151,23 +155,19 @@ let focusBeforeOverlay = null;
 let currentPlanCard = null;
 let currentPlanRunId = null;
 
-const APPROVAL_MODE_PRESENTATION = Object.freeze({
-  ask: {
-    label: 'Ask',
-    title: 'Approval mode: Ask for approval'
-  },
-  'auto-safe': {
-    label: 'Approve for me',
-    title: 'Approval mode: Approve routine actions for me'
-  },
-  full: {
-    label: 'Full access',
-    title: 'Approval mode: Full access for BrowsMe web actions'
-  }
+const CONTEXT_LABELS = {
+  active: 'Current tab + new tabs',
+  browser: 'Whole browser'
+};
+
+const APPROVAL_MODE_LABELS = Object.freeze({
+  ask: 'Ask',
+  'auto-safe': 'Approve for me',
+  full: 'Full access'
 });
 
 function normalizeApprovalMode(value) {
-  return Object.hasOwn(APPROVAL_MODE_PRESENTATION, value) ? value : 'ask';
+  return Object.hasOwn(APPROVAL_MODE_LABELS, value) ? value : 'ask';
 }
 
 const ICONS = {
@@ -205,7 +205,8 @@ function reportViewport() {
     const rect = ui.pageViewport.getBoundingClientRect();
     const obscured = !ui.settingsOverlay.hidden || !ui.decisionOverlay.hidden ||
       !ui.downloadsPopover.hidden || !ui.historyOverlay.hidden || !ui.readingPopover.hidden ||
-      !ui.chatsPopover.hidden || state.connectedActive === true;
+      !ui.chatsPopover.hidden || openContextMenu !== null || state.connectedActive === true;
+    ui.pageViewport.classList.toggle('is-obscured', obscured);
     const findInset = state.findOpen ? FIND_BAR_HEIGHT : 0;
     window.browsme.setViewportBounds(obscured
       ? {
@@ -226,6 +227,7 @@ function reportViewport() {
 function applyPanelState(save = false) {
   const isOpen = state.settings.aiPanelOpen !== false;
   ui.workspace.classList.toggle('ai-closed', !isOpen);
+  ui.aiPanel.inert = !isOpen;
   ui.aiToggle.classList.toggle('is-active', isOpen);
   ui.aiToggle.setAttribute('aria-pressed', String(isOpen));
   ui.aiPanel.style.width = `${Math.max(300, Math.min(620, state.settings.aiPanelWidth || 390))}px`;
@@ -240,6 +242,10 @@ function applyPanelState(save = false) {
 
 function setAiPanelOpen(open, save = true) {
   state.settings.aiPanelOpen = Boolean(open);
+  if (!open) {
+    if (!ui.chatsPopover.hidden) toggleChatsPopover(false);
+    if (ui.aiPanel.contains(contextMenuTrigger)) closeContextMenu();
+  }
   applyPanelState(save);
   if (open) {
     setTimeout(() => ui.agentInput.focus(), 190);
@@ -247,6 +253,8 @@ function setAiPanelOpen(open, save = true) {
 }
 
 function renderTabs() {
+  const previousActiveId = ui.tabs.querySelector('.tab.is-active')?.dataset.tabId;
+  const scrollLeft = ui.tabs.scrollLeft;
   ui.tabs.replaceChildren();
   for (const tab of state.browser.tabs) {
     const element = document.createElement('div');
@@ -311,12 +319,19 @@ function renderTabs() {
       showTabContextMenu(event.clientX, event.clientY, tab);
     });
     element.addEventListener('keydown', (event) => {
+      if (event.target !== element) return;
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         window.browsme.activateTab(tab.id).catch((error) => showToast(error.message, 'danger'));
       }
     });
     ui.tabs.append(element);
+  }
+
+  ui.tabs.scrollLeft = scrollLeft;
+  const active = ui.tabs.querySelector('.tab.is-active');
+  if (active && active.dataset.tabId !== previousActiveId) {
+    active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 }
 
@@ -359,18 +374,7 @@ function renderSettingsSummary() {
   const configured = Boolean(state.settings.apiKeyConfigured);
   const meta = state.settings.providerMeta || { label: 'DeepSeek', keyRequired: true };
   const keyNeeded = meta.keyRequired !== false;
-  const ready = configured || !keyNeeded;
   const approvalMode = normalizeApprovalMode(state.settings.approvalMode);
-  const approvalPresentation = APPROVAL_MODE_PRESENTATION[approvalMode];
-  ui.modelLabel.textContent = state.settings.model || meta.label || 'Model';
-  ui.approvalModeChip.textContent = approvalPresentation.label;
-  ui.approvalModeChip.title = approvalPresentation.title;
-  ui.approvalModeChip.classList.toggle('is-auto-safe', approvalMode === 'auto-safe');
-  ui.approvalModeChip.classList.toggle('is-full', approvalMode === 'full');
-  ui.aiStatusDot.classList.toggle('is-offline', !ready);
-  if (!state.agentRunning) {
-    ui.connectionLabel.textContent = ready ? 'Ready' : 'Needs API key';
-  }
   ui.apiKeyStatus.textContent = configured
     ? `Configured ${state.settings.apiKeyHint || ''}`
     : keyNeeded ? 'No key configured' : 'No key needed for local models';
@@ -404,6 +408,7 @@ function renderSettingsSummary() {
   ui.app.dataset.theme = state.settings.theme || 'system';
   ui.app.classList.toggle('theme-is-dark', effectiveThemeIsDark());
   renderBookmarksBar();
+  renderComposerPickers();
 }
 
 function effectiveThemeIsDark() {
@@ -493,84 +498,33 @@ function renderBrowser(nextState) {
   ui.maximizeButton.innerHTML = maximizeSvg;
 }
 
-let activeTypeTimer = null;
-let activeTyping = null;
-
-function prefersReducedMotion() {
-  try {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch {
-    return false;
-  }
-}
-
-function finishActiveTyping() {
-  if (activeTypeTimer) {
-    clearTimeout(activeTypeTimer);
-    activeTypeTimer = null;
-  }
-  if (activeTyping) {
-    activeTyping.el.textContent = activeTyping.full;
-    activeTyping = null;
-  }
-}
-
-function typeIntoBubble(el, text) {
-  activeTyping = { el, full: text };
-  el.textContent = '';
-  const perTick = Math.max(1, Math.round(text.length / 150));
-  let shown = 0;
-  const step = () => {
-    shown = Math.min(text.length, shown + perTick);
-    el.textContent = text.slice(0, shown);
-    scrollTerminal();
-    if (shown < text.length) {
-      activeTypeTimer = setTimeout(step, 16);
-    } else {
-      activeTypeTimer = null;
-      activeTyping = null;
-    }
-  };
-  step();
-}
-
-function appendMessage(role, content, options = {}) {
-  finishActiveTyping();
+function appendMessage(role, content, { animate = false } = {}) {
   const row = document.createElement('article');
   row.className = `message ${role}`;
-
-  const avatar = document.createElement('div');
-  avatar.className = 'message-avatar';
-  avatar.textContent = role === 'ai' ? 'AI' : 'YOU';
+  row.classList.toggle('is-new', animate);
+  const author = role === 'ai' ? 'BrowsMe' : 'You';
+  const messageTime = formatTime();
+  row.setAttribute('aria-label', `${author} at ${messageTime}`);
 
   const body = document.createElement('div');
   body.className = 'message-body';
-  const meta = document.createElement('div');
-  meta.className = 'message-meta';
-  const author = document.createElement('span');
-  author.className = 'msg-author';
-  author.textContent = role === 'ai' ? 'BrowsMe' : 'You';
-  const time = document.createElement('span');
-  time.textContent = formatTime();
+
+  const message = document.createElement('div');
+  message.className = 'message-content';
+  const fullText = String(content || '');
+  message.textContent = fullText;
+  message.title = messageTime;
+
   const copy = document.createElement('button');
   copy.type = 'button';
   copy.className = 'message-copy';
   copy.setAttribute('aria-label', 'Copy message');
   copy.title = 'Copy message';
   copy.innerHTML = ICONS.copy;
-  copy.addEventListener('click', () => copyMessageText(String(content || ''), copy));
-  meta.append(author, time, copy);
+  copy.addEventListener('click', () => copyMessageText(fullText, copy));
 
-  const message = document.createElement('div');
-  message.className = 'message-content';
-  const fullText = String(content || '');
-  if (options.animate && role === 'ai' && !prefersReducedMotion()) {
-    typeIntoBubble(message, fullText);
-  } else {
-    message.textContent = fullText;
-  }
-  body.append(meta, message);
-  row.append(avatar, body);
+  body.append(message, copy);
+  row.append(body);
   ui.terminalLog.append(row);
   scrollTerminal();
   return row;
@@ -812,11 +766,13 @@ function setAgentRunning(running, label) {
   state.agentRunning = Boolean(running);
   ui.terminalLog.dataset.busy = String(state.agentRunning);
   ui.sendAgent.classList.toggle('is-running', state.agentRunning);
-  ui.sendAgent.setAttribute('aria-label', state.agentRunning ? 'Stop command' : 'Run command');
+  ui.sendAgent.setAttribute('aria-label', state.agentRunning ? 'Stop command' : 'Send prompt');
+  ui.sendAgent.title = state.agentRunning ? 'Stop command (Esc)' : 'Send prompt (Enter)';
   ui.controlBanner.hidden = !state.agentRunning;
   ui.toolbarStopAgent.hidden = !state.agentRunning;
   ui.agentInput.disabled = state.agentRunning;
-  ui.agentScope.disabled = state.agentRunning;
+  ui.composerModel.disabled = state.agentRunning;
+  ui.composerContext.disabled = state.agentRunning;
   ui.suggestions.hidden = state.agentRunning;
   ui.agentStateLabel.textContent = label || (state.agentRunning ? 'Working' : 'Ready');
 }
@@ -834,7 +790,8 @@ function focusAgentComposer() {
 function setAgentPhase(phase, label) {
   state.agentPhase = phase;
   const names = {
-    idle: state.settings.apiKeyConfigured ? 'Ready' : 'Needs API key',
+    idle: state.settings.apiKeyConfigured || state.settings.providerMeta?.keyRequired === false
+      ? 'Ready' : 'API key required',
     understanding: 'Understanding',
     acting: 'Acting',
     approval: 'Awaiting approval',
@@ -847,7 +804,6 @@ function setAgentPhase(phase, label) {
     failed: 'Failed'
   };
   const text = label || names[phase] || 'Ready';
-  ui.connectionLabel.textContent = text;
   ui.agentStateLabel.textContent = text;
   const paused = phase === 'approval';
   ui.controlBanner.classList.toggle('is-paused', paused);
@@ -893,11 +849,11 @@ async function runAgentPrompt(rawPrompt) {
   const keyNeeded = (state.settings.providerMeta || {}).keyRequired !== false;
   if (keyNeeded && !state.settings.apiKeyConfigured) {
     showToast(`Add your ${(state.settings.providerMeta || {}).label || 'model provider'} API key first.`, 'warning');
-    openSettings();
+    openSettings({ focusKey: true });
     return;
   }
 
-  appendMessage('user', prompt);
+  appendMessage('user', prompt, { animate: true });
   ui.agentInput.value = '';
   resizeComposer();
   setAgentRunning(true, 'Starting');
@@ -906,12 +862,12 @@ async function runAgentPrompt(rawPrompt) {
   try {
     await window.browsme.runAgent({
       prompt,
-      scope: ui.agentScope.value
+      scope: state.agentScope
     });
   } catch (error) {
     if (state.agentRunning) {
       removeThinking();
-      appendMessage('ai', error.message || 'The command failed.');
+      appendMessage('ai', error.message || 'The command failed.', { animate: true });
       setAgentRunning(false, 'Failed');
     }
   }
@@ -934,11 +890,7 @@ async function clearTerminal() {
     showToast(error.message || 'Conversation history could not be deleted.', 'danger');
     return;
   }
-  for (const child of Array.from(ui.terminalLog.children)) {
-    if (!child.classList.contains('welcome-card')) {
-      child.remove();
-    }
-  }
+  ui.terminalLog.replaceChildren();
   toolCards.clear();
   currentPlanCard = null;
   currentPlanRunId = null;
@@ -1204,7 +1156,47 @@ function toggleDownloads(force) {
   }
 }
 
-function openSettings() {
+function selectSettingsTab(selectedTab) {
+  for (const tab of ui.settingsTabs) {
+    const selected = tab === selectedTab;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    document.getElementById(tab.getAttribute('aria-controls')).hidden = !selected;
+  }
+  ui.settingsBody.scrollTop = 0;
+}
+
+function handleSettingsTabKeys(event) {
+  const index = ui.settingsTabs.indexOf(event.target);
+  if (index === -1) return;
+
+  const vertical = ui.settingsTabList.getAttribute('aria-orientation') === 'vertical';
+  const last = ui.settingsTabs.length - 1;
+  let next;
+  switch (event.key) {
+    case vertical ? 'ArrowUp' : 'ArrowLeft':
+      next = index === 0 ? last : index - 1;
+      break;
+    case vertical ? 'ArrowDown' : 'ArrowRight':
+      next = index === last ? 0 : index + 1;
+      break;
+    case 'Home':
+      next = 0;
+      break;
+    case 'End':
+      next = last;
+      break;
+    default:
+      return;
+  }
+
+  event.preventDefault();
+  const tab = ui.settingsTabs[next];
+  selectSettingsTab(tab);
+  tab.focus();
+}
+
+function openSettings({ tab = 'connection', focusModel = false, focusKey = false } = {}) {
   focusBeforeOverlay = document.activeElement;
   state.clearKeyRequested = false;
   ui.settingsError.textContent = '';
@@ -1213,10 +1205,12 @@ function openSettings() {
   ui.toggleKey.textContent = 'Show';
   renderSettingsSummary();
   ui.settingsOverlay.hidden = false;
+  const selectedTab = document.getElementById(`settings-tab-${tab}`);
+  selectSettingsTab(selectedTab);
   document.querySelector('.browser-header').inert = true;
   ui.workspace.inert = true;
   reportViewport();
-  setTimeout(() => (state.settings.apiKeyConfigured ? ui.modelInput : ui.apiKey).focus(), 30);
+  (focusModel ? ui.modelInput : focusKey ? ui.apiKey : selectedTab).focus();
 }
 
 function closeSettings() {
@@ -1267,7 +1261,7 @@ async function saveSettings() {
         'warning'
       );
     } else if (nextApprovalMode !== previousApprovalMode) {
-      showToast(`${APPROVAL_MODE_PRESENTATION[nextApprovalMode].label} approval mode enabled.`);
+      showToast(`${APPROVAL_MODE_LABELS[nextApprovalMode]} approval mode enabled.`);
     } else {
       showToast('BrowsMe settings saved.');
     }
@@ -1426,9 +1420,27 @@ function closeFind() {
   reportViewport();
 }
 
-function closeContextMenu() {
-  openContextMenu?.remove();
+function closeContextMenu({ restoreFocus = false } = {}) {
+  if (!openContextMenu) return;
+  openContextMenu.remove();
   openContextMenu = null;
+  const trigger = contextMenuTrigger;
+  contextMenuTrigger = null;
+  trigger?.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) trigger?.focus();
+  reportViewport();
+}
+
+function placeContextMenu(menu, x, y, above = false) {
+  menu.style.visibility = 'hidden';
+  ui.app.append(menu);
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+  const top = above ? y - rect.height : y;
+  menu.style.top = `${Math.max(8, Math.min(top, window.innerHeight - rect.height - 8))}px`;
+  menu.style.visibility = 'visible';
+  openContextMenu = menu;
+  reportViewport();
 }
 
 function showTabContextMenu(x, y, tab) {
@@ -1472,18 +1484,10 @@ function showTabContextMenu(x, y, tab) {
   addItem('Close other tabs', '', () => window.browsme.closeOtherTabs(tab.id), onlyTab);
   addItem('Reopen closed tab', 'Ctrl+Shift+T', () => window.browsme.reopenTab());
 
-  menu.style.visibility = 'hidden';
-  document.body.append(menu);
-  const rect = menu.getBoundingClientRect();
-  const left = Math.min(x, window.innerWidth - rect.width - 8);
-  const top = Math.min(y, window.innerHeight - rect.height - 8);
-  menu.style.left = `${Math.max(8, left)}px`;
-  menu.style.top = `${Math.max(8, top)}px`;
-  menu.style.visibility = 'visible';
-  openContextMenu = menu;
+  placeContextMenu(menu, x, y);
 }
 
-function showSimpleMenu(x, y, items) {
+function showSimpleMenu(x, y, items, { trigger = null, above = false } = {}) {
   closeContextMenu();
   const menu = document.createElement('div');
   menu.className = 'context-menu';
@@ -1497,7 +1501,9 @@ function showSimpleMenu(x, y, items) {
     }
     const button = document.createElement('button');
     button.type = 'button';
-    button.setAttribute('role', 'menuitem');
+    const isChoice = typeof item.checked === 'boolean';
+    button.setAttribute('role', isChoice ? 'menuitemradio' : 'menuitem');
+    if (isChoice) button.setAttribute('aria-checked', String(item.checked));
     button.disabled = item.disabled === true;
     const text = document.createElement('span');
     text.textContent = item.label;
@@ -1508,19 +1514,108 @@ function showSimpleMenu(x, y, items) {
       hint.textContent = item.shortcut;
       button.append(hint);
     }
+    if (item.checked) {
+      const check = document.createElement('span');
+      check.textContent = '✓';
+      check.setAttribute('aria-hidden', 'true');
+      button.append(check);
+    }
     button.addEventListener('click', () => {
-      closeContextMenu();
+      closeContextMenu({ restoreFocus: true });
       Promise.resolve(item.action()).catch((error) => showToast(error.message, 'danger'));
     });
     menu.append(button);
   }
-  menu.style.visibility = 'hidden';
-  document.body.append(menu);
-  const rect = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
-  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
-  menu.style.visibility = 'visible';
-  openContextMenu = menu;
+  placeContextMenu(menu, x, y, above);
+  if (trigger) {
+    contextMenuTrigger = trigger;
+    trigger.setAttribute('aria-expanded', 'true');
+    const choices = Array.from(menu.querySelectorAll('button:not(:disabled)'));
+    choices[0]?.focus();
+    menu.addEventListener('keydown', (event) => {
+      if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      const direction = event.key === 'ArrowUp' ? -1 : 1;
+      const current = choices.indexOf(document.activeElement);
+      choices[(current + direction + choices.length) % choices.length]?.focus();
+    });
+  }
+}
+
+function showAssistantOptions() {
+  if (contextMenuTrigger === ui.assistantOptions) {
+    closeContextMenu();
+    return;
+  }
+  if (!ui.chatsPopover.hidden) toggleChatsPopover(false);
+
+  const rect = ui.assistantOptions.getBoundingClientRect();
+  showSimpleMenu(rect.left, rect.bottom + 6, [
+    { label: 'Copy chat as Markdown', action: exportActiveChat },
+    { label: 'Clear this chat', disabled: state.agentRunning, action: clearTerminal },
+    { separator: true },
+    { label: 'Assistant settings', action: () => openSettings({ tab: 'assistant' }) }
+  ], { trigger: ui.assistantOptions });
+}
+
+function renderComposerPickers() {
+  const model = state.settings.model || 'Model';
+  ui.composerModel.title = `Model: ${model}`;
+  ui.composerModel.setAttribute('aria-label', ui.composerModel.title);
+
+  const context = CONTEXT_LABELS[state.agentScope];
+  ui.composerContextLabel.textContent = state.agentScope === 'active' ? 'This tab + new tabs' : context;
+  ui.composerContext.title = `Context: ${context}`;
+  ui.composerContext.setAttribute('aria-label', ui.composerContext.title);
+
+  const configured = state.settings.apiKeyConfigured || state.settings.providerMeta?.keyRequired === false;
+  const approval = normalizeApprovalMode(state.settings.approvalMode);
+  ui.assistantModelStatus.textContent = configured ? model : 'Set up AI';
+  ui.assistantModelDetails.title = configured ? `Model settings: ${model}` : 'Set up AI in Settings';
+  ui.assistantApprovalStatus.textContent = approval === 'ask' ? 'Ask first' : APPROVAL_MODE_LABELS[approval];
+  ui.assistantIntroScope.textContent = state.agentScope === 'browser' ? 'your tabs.' : 'this page.';
+}
+
+function openComposerMenu(trigger, items) {
+  if (contextMenuTrigger === trigger) {
+    closeContextMenu();
+    return;
+  }
+  if (!ui.chatsPopover.hidden) toggleChatsPopover(false);
+  const rect = trigger.getBoundingClientRect();
+  showSimpleMenu(rect.left, rect.top - 6, items, { trigger, above: true });
+}
+
+function showModelPicker() {
+  const { model, provider, providerCatalog } = state.settings;
+  const defaultModel = providerCatalog[provider]?.defaultModel;
+  const choices = [...new Set([model, defaultModel].filter(Boolean))].map(value => ({
+    label: value,
+    checked: value === model,
+    action: async () => {
+      if (value === state.settings.model || state.agentRunning) return;
+      const updated = await window.browsme.saveSettings({ model: value });
+      state.settings = { ...state.settings, ...updated };
+      renderSettingsSummary();
+    }
+  }));
+  openComposerMenu(ui.composerModel, [
+    ...choices,
+    ...(choices.length ? [{ separator: true }] : []),
+    { label: 'Choose another model…', action: () => openSettings({ focusModel: true }) }
+  ]);
+}
+
+function showContextPicker() {
+  openComposerMenu(ui.composerContext, Object.entries(CONTEXT_LABELS).map(([scope, label]) => ({
+    label,
+    checked: scope === state.agentScope,
+    action: () => {
+      if (state.agentRunning) return;
+      state.agentScope = scope;
+      renderComposerPickers();
+    }
+  })));
 }
 
 async function toggleTheme() {
@@ -1552,7 +1647,7 @@ function showBrowserMenu() {
       disabled: !/^https:\/\//i.test(activeTab()?.url || ''),
       action: () => void openAuthenticationInSystemBrowser(activeTab()?.id)
     },
-    { label: 'Clear browsing data', action: () => { openSettings(); } }
+    { label: 'Clear browsing data', action: () => openSettings({ tab: 'browser' }) }
   ]);
 }
 
@@ -1693,16 +1788,16 @@ function renderReadingList() {
   for (const item of items) {
     const row = document.createElement('article');
     row.className = 'download-item';
-    const info = document.createElement('div');
-    info.className = 'download-info';
-    const name = document.createElement('div');
+    const info = document.createElement('button');
+    info.type = 'button';
+    info.className = 'download-info reading-open';
+    const name = document.createElement('span');
     name.className = 'download-name';
     name.textContent = item.title || item.url;
-    const status = document.createElement('div');
+    const status = document.createElement('span');
     status.className = 'download-status';
     status.textContent = getHostname(item.url);
     info.append(name, status);
-    info.style.cursor = 'pointer';
     info.addEventListener('click', () => {
       window.browsme.navigate({ tabId: state.browser.activeTabId, url: item.url })
         .catch((error) => showToast(error.message, 'danger'));
@@ -1773,11 +1868,7 @@ function relativeTime(iso) {
 }
 
 function renderConversation(messages) {
-  for (const child of Array.from(ui.terminalLog.children)) {
-    if (!child.classList.contains('welcome-card')) {
-      child.remove();
-    }
-  }
+  ui.terminalLog.replaceChildren();
   toolCards.clear();
   currentPlanCard = null;
   currentPlanRunId = null;
@@ -1787,10 +1878,10 @@ function renderConversation(messages) {
   scrollTerminal();
 }
 
-function renderChatBar() {
+function updateChatsButtonTitle() {
   const active = state.chats.find((c) => c.id === state.activeChatId) ||
     state.chats.find((c) => c.active);
-  ui.chatTitle.textContent = active ? active.title : 'New chat';
+  ui.chatsButton.title = active ? `All chats · ${active.title}` : 'All chats';
 }
 
 function renderChatsList() {
@@ -1810,12 +1901,13 @@ function renderChatsList() {
     const item = document.createElement('div');
     item.className = 'chat-item';
     item.classList.toggle('is-active', chat.id === state.activeChatId);
-    const bodyEl = document.createElement('div');
+    const bodyEl = document.createElement('button');
+    bodyEl.type = 'button';
     bodyEl.className = 'chat-item-body';
-    const title = document.createElement('div');
+    const title = document.createElement('span');
     title.className = 'chat-item-title';
     title.textContent = chat.title;
-    const metaEl = document.createElement('div');
+    const metaEl = document.createElement('span');
     metaEl.className = 'chat-item-meta';
     metaEl.textContent = `${chat.messageCount} message${chat.messageCount === 1 ? '' : 's'} · ${relativeTime(chat.updatedAt)}`;
     bodyEl.append(title, metaEl);
@@ -1845,6 +1937,7 @@ function renderChatsList() {
 function toggleChatsPopover(force) {
   const show = typeof force === 'boolean' ? force : ui.chatsPopover.hidden;
   ui.chatsPopover.hidden = !show;
+  ui.chatsButton.setAttribute('aria-expanded', String(show));
   reportViewport();
   if (show) {
     ui.chatSearch.value = '';
@@ -1860,7 +1953,7 @@ async function refreshChats() {
     if (active) {
       state.activeChatId = active.id;
     }
-    renderChatBar();
+    updateChatsButtonTitle();
     if (!ui.chatsPopover.hidden) {
       renderChatsList();
     }
@@ -1879,7 +1972,7 @@ async function newChat() {
     state.chats = result.sessions;
     state.activeChatId = result.session.id;
     renderConversation([]);
-    renderChatBar();
+    updateChatsButtonTitle();
     toggleChatsPopover(false);
     focusAgentComposer();
   } catch (error) {
@@ -1901,7 +1994,7 @@ async function switchChat(id) {
     state.chats = result.sessions;
     state.activeChatId = result.activeId;
     renderConversation(result.messages);
-    renderChatBar();
+    updateChatsButtonTitle();
     toggleChatsPopover(false);
   } catch (error) {
     showToast(error.message, 'danger');
@@ -1915,7 +2008,7 @@ async function renameChat(chat) {
   }
   try {
     state.chats = await window.browsme.chatRename(chat.id, title);
-    renderChatBar();
+    updateChatsButtonTitle();
     renderChatsList();
   } catch (error) {
     showToast(error.message, 'danger');
@@ -1934,7 +2027,7 @@ async function deleteChat(chat) {
     if (wasActive) {
       renderConversation(result.messages);
     }
-    renderChatBar();
+    updateChatsButtonTitle();
     renderChatsList();
   } catch (error) {
     showToast(error.message, 'danger');
@@ -2090,7 +2183,10 @@ function bindEvents() {
   });
 
   ui.aiToggle.addEventListener('click', () => setAiPanelOpen(!state.settings.aiPanelOpen));
-  ui.collapseAi.addEventListener('click', () => setAiPanelOpen(false));
+  ui.collapseAi.addEventListener('click', () => {
+    setAiPanelOpen(false);
+    ui.aiToggle.focus();
+  });
   ui.sendAgent.addEventListener('click', () => {
     if (state.agentRunning) {
       void requestAgentStop();
@@ -2116,13 +2212,15 @@ function bindEvents() {
     resizeComposer();
     ui.agentInput.focus();
   });
-  ui.clearAgent.addEventListener('click', () => {
-    void clearTerminal();
-  });
   ui.newChat.addEventListener('click', () => void newChat());
   ui.chatsButton.addEventListener('click', () => toggleChatsPopover());
-  ui.chatSwitcher.addEventListener('click', () => toggleChatsPopover());
-  ui.chatExport.addEventListener('click', () => void exportActiveChat());
+  ui.assistantOptions.addEventListener('click', showAssistantOptions);
+  ui.composerModel.addEventListener('click', showModelPicker);
+  ui.composerContext.addEventListener('click', showContextPicker);
+  ui.assistantModelDetails.addEventListener('click', () => {
+    const focusModel = state.settings.apiKeyConfigured || state.settings.providerMeta?.keyRequired === false;
+    openSettings({ focusModel, focusKey: !focusModel });
+  });
   ui.chatsNew.addEventListener('click', () => void newChat());
   ui.chatSearch.addEventListener('input', renderChatsList);
   ui.chatsPopover.querySelector('[data-close-popover]')
@@ -2131,6 +2229,18 @@ function bindEvents() {
   ui.downloadsButton.addEventListener('click', () => toggleDownloads());
   ui.downloadsPopover.querySelector('[data-close-popover]').addEventListener('click', () => toggleDownloads(false));
   ui.settingsButton.addEventListener('click', openSettings);
+  const compactSettings = window.matchMedia('(max-width: 720px)');
+  const updateSettingsOrientation = () => {
+    ui.settingsTabList.setAttribute('aria-orientation', compactSettings.matches ? 'horizontal' : 'vertical');
+  };
+  compactSettings.addEventListener('change', updateSettingsOrientation);
+  updateSettingsOrientation();
+  ui.settingsTabList.addEventListener('keydown', handleSettingsTabKeys);
+  for (const tab of ui.settingsTabs) {
+    tab.addEventListener('click', () => {
+      if (tab.getAttribute('aria-selected') !== 'true') selectSettingsTab(tab);
+    });
+  }
   ui.closeSettings.addEventListener('click', closeSettings);
   ui.cancelSettings.addEventListener('click', closeSettings);
   ui.saveSettings.addEventListener('click', () => void saveSettings());
@@ -2198,7 +2308,7 @@ function bindEvents() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (openContextMenu) {
-        closeContextMenu();
+        closeContextMenu({ restoreFocus: true });
       } else if (!ui.decisionOverlay.hidden && currentDecision) {
         event.preventDefault();
         void resolveDecision(false);
@@ -2219,7 +2329,7 @@ function bindEvents() {
   });
 
   document.addEventListener('pointerdown', (event) => {
-    if (openContextMenu && !openContextMenu.contains(event.target)) {
+    if (openContextMenu && !openContextMenu.contains(event.target) && !contextMenuTrigger?.contains(event.target)) {
       closeContextMenu();
     }
   });
@@ -2318,7 +2428,7 @@ async function initialize() {
       state.chats.find((c) => c.active)?.id || null;
     renderBrowser(initial);
     renderDownloads();
-    renderChatBar();
+    updateChatsButtonTitle();
     renderConversation(initial.activeChatMessages || []);
     if (state.memory && state.memory.rememberedFacts > 0) {
       appendSystemNote(

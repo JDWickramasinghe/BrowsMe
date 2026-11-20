@@ -99,6 +99,7 @@ async function main() {
   await evaluate(client, 'document.getElementById("settings-button").click()');
   await wait(250);
   await evaluate(client, `(() => {
+    document.getElementById('settings-tab-assistant').click();
     const full = Array.from(document.querySelectorAll('input[name="approval-mode"]'))
       .find((input) => input.value === 'full');
     full.click();
@@ -116,6 +117,7 @@ async function main() {
   await evaluate(client, 'document.getElementById("settings-button").click()');
   await wait(250);
   const approvalUi = await evaluate(client, `(() => {
+    document.getElementById('settings-tab-assistant').click();
     const inputs = Array.from(document.querySelectorAll('input[name="approval-mode"]'));
     const fullInput = inputs.find((input) => input.value === 'full');
     const fullCard = fullInput?.closest('.approval-mode-card');
@@ -124,8 +126,7 @@ async function main() {
       count: inputs.length,
       values: inputs.map((input) => input.value),
       fullChecked: Boolean(fullInput?.checked),
-      chipText: document.getElementById('approval-mode-chip')?.textContent,
-      chipIsFull: document.getElementById('approval-mode-chip')?.classList.contains('is-full'),
+      fullLabel: fullCard?.querySelector('.approval-mode-copy strong')?.textContent,
       fullBorderColor: fullCard ? getComputedStyle(fullCard).borderColor : '',
       reliabilityValue: reliability?.value,
       reliabilityValues: Array.from(reliability?.options || []).map((option) => option.value),
@@ -200,8 +201,7 @@ async function main() {
       approvalUi.count === 3 &&
       approvalUi.values.join(',') === 'ask,auto-safe,full' &&
       approvalUi.fullChecked &&
-      approvalUi.chipText === 'Full access' &&
-      approvalUi.chipIsFull &&
+      approvalUi.fullLabel === 'Full access' &&
       approvalUi.reliabilityValue === 'maximum' &&
       approvalUi.reliabilityValues.join(',') === 'fast,reliable,maximum' &&
       approvalUi.reliabilityLabel === 'Maximum accuracy' &&
