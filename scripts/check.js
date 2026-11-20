@@ -36,11 +36,16 @@ for (const file of files) {
 }
 
 const requiredFiles = [
+  'src/theme.css',
+  'src/InterVariable.woff2',
+  'src/assets/Inter-OFL.txt',
   'src/renderer/index.html',
   'src/renderer/styles.css',
   'src/renderer/renderer.js',
   'src/newtab/index.html',
   'src/newtab/newtab.css',
+  'src/newtab/newtab.js',
+  'src/newtab/search-glass.js',
   'src/preload.js',
   'src/main/main.js'
 ];

@@ -1,0 +1,47 @@
+@font-face {
+  font-family: Inter;
+  src: url("InterVariable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light dark;
+  font-family: Inter, "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  font-optical-sizing: auto;
+  --type-caption: 12px;
+  --type-ui: 13px;
+  --type-body: 14px;
+
+  --bg: light-dark(#d7d6cf, #272725);
+  --chrome: light-dark(#cecdc6, #20201e);
+  --chrome-raised: light-dark(#deddd6, #2d2d2a);
+  --surface: light-dark(#eeede7, #33332f);
+  --surface-soft: light-dark(#e4e3dc, #3b3b37);
+  --surface-muted: light-dark(#d3d2ca, #454541);
+  --text: light-dark(#191917, #f1f0e9);
+  --text-soft: light-dark(#464641, #d0cfc5);
+  --text-faint: light-dark(#595950, #b5b4aa);
+  --line: light-dark(#acaba2, #62625b);
+  --line-soft: light-dark(#c9c8bf, #4c4c46);
+
+  --accent: light-dark(#1e1e1b, #e7e6df);
+  --accent-strong: light-dark(#44443e, #fffef8);
+  --on-accent: light-dark(#f8f7ef, #20201e);
+  --accent-soft: light-dark(#d0cfc6, #474742);
+  --signal: #ff6437;
+  --signal-ink: light-dark(#983614, #ffab8b);
+  --signal-soft: light-dark(#f5d5c7, #54372d);
+
+  --success: light-dark(#346442, #a8cbb0);
+  --warning: light-dark(#785313, #f0c27c);
+  --danger: light-dark(#a33124, #ff9d91);
+  --danger-fill: #a33124;
+
+  --shadow: 0 12px 36px rgb(18 17 15 / 22%);
+  --shadow-small: 0 6px 18px rgb(18 17 15 / 15%);
+  --radius-control: 999px;
+  --radius-card: 12px;
+  --radius-panel: 18px;
+}
