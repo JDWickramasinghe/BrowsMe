@@ -49,8 +49,11 @@ const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml'
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2'
 };
+
+const SHARED_UI_RESOURCES = new Set(['/theme.css', '/InterVariable.woff2']);
 
 let mainWindow = null;
 let browser = null;
@@ -83,7 +86,7 @@ function securityHeaders(hostname) {
 
   const newTabPolicy = [
     "default-src 'self'",
-    "script-src 'none'",
+    "script-src 'self'",
     "style-src 'self'",
     "img-src 'self' data:",
     "connect-src 'none'",
@@ -107,12 +110,13 @@ async function localProtocolHandler(request) {
       app: path.join(__dirname, '..', 'renderer'),
       newtab: path.join(__dirname, '..', 'newtab')
     };
-    const root = roots[url.hostname];
-    if (!root) {
+    const hostRoot = roots[url.hostname];
+    if (!hostRoot) {
       return new Response('Not found', { status: 404 });
     }
 
     const requestedPath = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
+    const root = SHARED_UI_RESOURCES.has(requestedPath) ? path.join(__dirname, '..') : hostRoot;
     const absolutePath = path.resolve(root, `.${requestedPath}`);
     const relative = path.relative(root, absolutePath);
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
@@ -758,7 +762,7 @@ async function createWindow() {
     minHeight: 700,
     show: false,
     frame: false,
-    backgroundColor: '#eef1f6',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#272725' : '#d7d6cf',
     title: 'BrowsMe',
     icon: path.join(
       __dirname,
